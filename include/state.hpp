@@ -64,7 +64,7 @@ namespace catan {
         uint8_t player_dev[4][5];                  // dev cards: knight, VP, road building, year of plenty, monopoly
         uint8_t player_dev_bought_this_turn[4][5]; // one-turn cooldown on newly bought dev cards (VP exempt)
         uint8_t player_vp[4];                      // total victory points
-        uint8_t player_ports[4][6];                // brick, lumber, wool, grain, ore, 3:1
+        uint8_t player_ports[4];                   // port access bitmask: bit 0=brick, 1=lumber, 2=wool, 3=grain, 4=ore, 5=3:1 generic; bits 6-7 unused
 
         // --- Per-player counters ---
         uint8_t player_knights_played[4];   // contributes to largest army
@@ -94,55 +94,9 @@ namespace catan {
                   "GameState must be trivially copyable for memcpy cloning");
     static_assert(alignof(GameState) == 64,
                   "GameState must be 64-byte aligned (cache line)");
-    // static_assert(sizeof(GameState) == 256,
-                  // "GameState must be exactly 4 cache lines; update if layout changes intentionally");
+    static_assert(sizeof(GameState) == 256,
+                 "GameState must be exactly 4 cache lines; update if layout changes intentionally");
     static_assert(std::is_trivially_copyable_v<BoardLayout>,
                   "BoardLayout must be trivially copyable");
 
 }
-
-/*
-GAPS:
-1. Discard tracking (7-roll) — All players with >7 cards must discard, not just current. Need per-player pending count:                                                                     
-  uint8_t player_discard_owed[4];  // cards still to discard, 0 = done                                                                                                                        
-  Without this, can't resume after multi-player discard.                                                                                                                                      
-                                                                                                                                                                                              
-  2. Road Building dev card — Up to 2 free roads, sequential placement. Need:                                                                                                                 
-  uint8_t free_roads_remaining;  // 0..2 when Flag::PLACE_ROAD active                                                                                                                         
-                                                                                                                                                                                              
-  3. Year of Plenty progress — If modeled as 2 sub-picks. If single atomic action (pick both at once) → no field needed. Decide action model.                                                 
-                                                                                                                                                                                              
-  4. Trade offer state — Flag::TRADE_PENDING exists but no fields. If supporting open trades:                                                                                                 
-  uint8_t trade_give[5], trade_want[5];                                                                                                                                                       
-  uint8_t trade_proposer;                                                                                                                                                                     
-  uint8_t trade_responses;  // bitmask: bit i = player i responded
-  Skip if action model = instant 1-on-1 swap.                     
-                                                                                                                                                                                              
-  5. num_players — Hardcoded 4. If supporting 3-player games, need uint8_t num_players;. Otherwise fine, document "always 4."                                                                 
-                                                                                                                                                                                              
-  6. Initial placement direction tracking — start_player + current_player + phase. Phase 1 forward, phase 2 reverse. Order derivable. OK if step logic implements direction switch correctly. 
-  No field gap.                                                                                                                                                                               
-                                                                                                                                                                                              
-  Smaller nits                                                                                                                                                                                
-                                       
-  - dev_card_played bool — fine. Compiler treats as 1 byte.                                                                                                                                   
-  - node[54] packing convention not documented — what bits = owner, what = level (settlement/city)? Add comment showing layout (e.g., bits 0-1 = owner, bit 2 = is_city, or similar).
-  - edge[72] empty sentinel — uses EDGE_EMPTY in comment but constant not defined. Only NO_PLAYER = 0xFF exists. Either rename to one constant or define EDGE_EMPTY.                          
-  - dev_deck[5] order — confirm matches player_dev[4][5] order (knight, VP, RB, YoP, monopoly). Comment matches; sanity check at use site.                                                    
-  - player_settlement_count — comment says "settlements left to place" (decrements from 5). Earlier version was "for tie-breaking in longest road" (count placed). Pick one meaning, stay     
-  consistent. Tie-break needs placed count. Currently using remaining. If using remaining: tie-break = 5 - remaining. Document.                                                               
-  - Same applies to player_city_count, player_road_count.                                                                                                                                     
-                                                                                                                                                                                              
-  Sanity                                                                                                                                                                                      
-                                                                                                                                                                                              
-  sizeof math:                                                                                                                                                                                
-  - Members sum ≈ 243 bytes
-  - alignas(64) rounds to 256. static_assert holds.                                                                                                                                           
-                                       
-  Verdict                                                                                                                                                                                     
-                                       
-  Functionally close to ready. Add discard_owed + free_roads_remaining and you cover all forced-action mid-state resumes. Trade fields depend on action model. Define EDGE_EMPTY, document    
-  node packing, lock down placed-vs-remaining semantics. Good to wire up step logic and let profiler guide rest.
-
-
-*/
