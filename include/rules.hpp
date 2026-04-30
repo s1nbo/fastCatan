@@ -35,9 +35,13 @@ namespace catan {
         inline constexpr uint32_t STEAL_BASE       = 206;  // [206, 210) steal from player p
         inline constexpr uint32_t TRADE_BASE       = 210;  // [210, 235) bank/port trade: give*5 + get
         inline constexpr uint32_t TRADE_END        = 235;  // exclusive upper bound
-        inline constexpr uint32_t BUY_DEV          = 235;
-        inline constexpr uint32_t PLAY_KNIGHT      = 236;
-        // M2 reserves 237..240 for VP/RoadBuilding/YearOfPlenty/Monopoly play actions.
+        inline constexpr uint32_t BUY_DEV              = 235;
+        inline constexpr uint32_t PLAY_KNIGHT          = 236;
+        inline constexpr uint32_t PLAY_ROAD_BUILDING   = 237;
+        inline constexpr uint32_t PLAY_YEAR_OF_PLENTY  = 238;  // [238, 263) base + give1*5 + give2
+        inline constexpr uint32_t YOP_END              = 263;  // exclusive
+        inline constexpr uint32_t PLAY_MONOPOLY        = 263;  // [263, 268) base + resource
+        inline constexpr uint32_t MONOPOLY_END         = 268;  // exclusive
     }
 
 }  // namespace catan

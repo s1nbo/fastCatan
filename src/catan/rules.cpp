@@ -305,8 +305,9 @@ constexpr uint8_t NUM_RESOURCES = 5;
 constexpr uint8_t NUM_PLAYERS = 4;
 constexpr uint8_t WIN_VP = 10;
 
-// Forward decl — defined later in this anon namespace.
+// Forward decls — defined later in this anon namespace.
 inline void check_game_ended(GameState& s) noexcept;
+inline void check_longest_road(GameState& s) noexcept;
 
 // Build costs, indexed [brick, lumber, wool, grain, ore].
 constexpr uint8_t COST_SETTLEMENT[5] = { 1, 1, 1, 1, 0 };
@@ -366,6 +367,8 @@ inline void handle_build_settle(GameState& s, const BoardLayout& b, uint32_t act
 
     pay_to_bank(s, pl, COST_SETTLEMENT);
     place_settlement(s, b, node_id, pl, /*payout=*/false);
+    // Settlement might split an opponent's road graph at this node.
+    check_longest_road(s);
     check_game_ended(s);
 }
 
@@ -401,7 +404,8 @@ inline void handle_build_road(GameState& s, uint32_t action) noexcept {
 
     pay_to_bank(s, pl, COST_ROAD);
     place_road(s, edge_id, pl);
-    // Longest-road update lands with the longest_road.cpp slice.
+    check_longest_road(s);
+    check_game_ended(s);
 }
 
 inline void check_game_ended(GameState& s) noexcept {
@@ -644,11 +648,11 @@ inline void handle_steal(GameState& s, uint32_t action) noexcept {
 // =====================================================================
 
 // Dev card type indices (match player_dev[] / dev_deck[] layout).
-constexpr uint8_t DEV_KNIGHT       = 0;
-constexpr uint8_t DEV_VP           = 1;
-[[maybe_unused]] constexpr uint8_t DEV_ROAD_BUILDING   = 2;  // M2
-[[maybe_unused]] constexpr uint8_t DEV_YEAR_OF_PLENTY  = 3;  // M2
-[[maybe_unused]] constexpr uint8_t DEV_MONOPOLY        = 4;  // M2
+constexpr uint8_t DEV_KNIGHT          = 0;
+constexpr uint8_t DEV_VP              = 1;
+constexpr uint8_t DEV_ROAD_BUILDING   = 2;
+constexpr uint8_t DEV_YEAR_OF_PLENTY  = 3;
+constexpr uint8_t DEV_MONOPOLY        = 4;
 
 constexpr uint8_t COST_DEV[5] = { 0, 0, 1, 1, 1 };  // wool + grain + ore
 
@@ -735,6 +739,222 @@ inline void handle_play_knight(GameState& s) noexcept {
     check_game_ended(s);
 }
 
+// True if player has at least one legal road placement on the current board.
+inline bool has_any_legal_road(const GameState& s, uint8_t player) noexcept {
+    if (s.player_road_count[player] == 0) return false;
+    for (uint8_t e = 0; e < topology::NUM_EDGES; ++e) {
+        if (s.edge[e] != NO_PLAYER) continue;
+        if (road_connects(s, e, player)) return true;
+    }
+    return false;
+}
+
+// =====================================================================
+// Longest road algorithm (graph DFS, no edge revisit, opponent-blocked nodes)
+// =====================================================================
+
+constexpr uint8_t LONGEST_ROAD_THRESHOLD = 5;
+constexpr uint8_t LONGEST_ROAD_VP        = 2;
+
+// Recursive DFS body. Marks `edge` as visited; explores onward edges that
+// share `exit_node = the other endpoint`. Path length = edges traversed.
+// Opponent-occupied nodes block continuation through them.
+static uint8_t lr_dfs(const GameState& s, uint8_t player,
+                       uint8_t edge, uint8_t entry_node,
+                       bool* visited) noexcept {
+    visited[edge] = true;
+    uint8_t exit_node = (topology::edge_to_node[edge][0] == entry_node)
+                      ? topology::edge_to_node[edge][1]
+                      : topology::edge_to_node[edge][0];
+
+    uint8_t max_branch = 0;
+    uint8_t n = s.node[exit_node];
+    uint8_t lvl = node_level(n);
+    bool blocked = (lvl != NODE_EMPTY) && (node_owner(n) != player);
+
+    if (!blocked) {
+        for (uint8_t k = 0; k < topology::MAX_EDGES_PER_NODE; ++k) {
+            uint8_t next_e = topology::node_to_edge[exit_node][k];
+            if (next_e == topology::NO_EDGE) break;
+            if (next_e == edge)            continue;
+            if (visited[next_e])           continue;
+            if (s.edge[next_e] != player)  continue;
+            uint8_t branch = lr_dfs(s, player, next_e, exit_node, visited);
+            if (branch > max_branch) max_branch = branch;
+        }
+    }
+
+    visited[edge] = false;
+    return uint8_t(1 + max_branch);
+}
+
+inline uint8_t longest_road_for(const GameState& s, uint8_t player) noexcept {
+    uint8_t best = 0;
+    for (uint8_t v = 0; v < topology::NUM_NODES; ++v) {
+        uint8_t n = s.node[v];
+        uint8_t lvl = node_level(n);
+        if (lvl != NODE_EMPTY && node_owner(n) != player) continue;
+
+        for (uint8_t k = 0; k < topology::MAX_EDGES_PER_NODE; ++k) {
+            uint8_t e = topology::node_to_edge[v][k];
+            if (e == topology::NO_EDGE) break;
+            if (s.edge[e] != player) continue;
+
+            bool visited[topology::NUM_EDGES] = {};
+            uint8_t len = lr_dfs(s, player, e, v, visited);
+            if (len > best) best = len;
+        }
+    }
+    return best;
+}
+
+// Recompute every player's longest-road length and update the title.
+// Called after any action that could mutate the road graph (own road build,
+// free road via RB, opponent settlement that may split a road).
+//
+// Title rules:
+//   - Need >=5 to claim.
+//   - Holder loses title if their length drops below 5 (e.g., cut by an opponent).
+//   - Transfer only on STRICT exceed (ties keep incumbent).
+inline void check_longest_road(GameState& s) noexcept {
+    uint8_t lens[NUM_PLAYERS];
+    for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
+        lens[p] = longest_road_for(s, p);
+        s.player_road_length[p] = lens[p];
+    }
+
+    uint8_t holder = s.longest_road_owner;
+    uint8_t holder_len = (holder != NO_PLAYER) ? lens[holder] : 0;
+
+    // Cut-below-threshold: holder loses title.
+    if (holder != NO_PLAYER && holder_len < LONGEST_ROAD_THRESHOLD) {
+        s.player_vp[holder]              -= LONGEST_ROAD_VP;
+        s.player_vp_without_dev[holder]  -= LONGEST_ROAD_VP;
+        s.longest_road_owner             = NO_PLAYER;
+        holder = NO_PLAYER;
+        holder_len = 0;
+    }
+
+    uint8_t threshold = (holder == NO_PLAYER) ? LONGEST_ROAD_THRESHOLD
+                                              : uint8_t(holder_len + 1);
+    uint8_t winner   = NO_PLAYER;
+    uint8_t winner_n = uint8_t(threshold - 1);
+    for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
+        if (lens[p] >= threshold && lens[p] > winner_n) {
+            winner   = p;
+            winner_n = lens[p];
+        }
+    }
+
+    if (winner == NO_PLAYER || winner == holder) return;
+
+    if (holder != NO_PLAYER) {
+        s.player_vp[holder]              -= LONGEST_ROAD_VP;
+        s.player_vp_without_dev[holder]  -= LONGEST_ROAD_VP;
+    }
+    s.longest_road_owner = winner;
+    s.player_vp[winner]              += LONGEST_ROAD_VP;
+    s.player_vp_without_dev[winner]  += LONGEST_ROAD_VP;
+}
+
+inline void handle_play_road_building(GameState& s) noexcept {
+    if (s.flag != Flag::NONE) return;
+    if (s.dev_card_played)    return;
+    uint8_t pl = s.current_player;
+    if (s.player_dev[pl][DEV_ROAD_BUILDING] == 0) return;
+
+    s.player_dev[pl][DEV_ROAD_BUILDING] -= 1;
+    s.player_total_dev[pl]              -= 1;
+    s.dev_card_played                    = true;
+    s.free_roads_remaining               = 2;
+    s.flag                               = Flag::PLACE_ROAD;
+
+    // No legal roads at all — clear immediately so the game doesn't stall.
+    if (!has_any_legal_road(s, pl)) {
+        s.free_roads_remaining = 0;
+        s.flag                 = Flag::NONE;
+    }
+}
+
+// PLACE_ROAD sub-phase: free road placement, no resource cost.
+// Reuses ROAD_BASE+edge action IDs.
+inline void handle_place_road(GameState& s, uint32_t action) noexcept {
+    if (action - action::ROAD_BASE >= topology::NUM_EDGES) return;
+    uint8_t pl = s.current_player;
+    uint8_t edge_id = uint8_t(action - action::ROAD_BASE);
+
+    if (s.player_road_count[pl] == 0)   return;
+    if (s.edge[edge_id] != NO_PLAYER)   return;
+    if (!road_connects(s, edge_id, pl)) return;
+
+    s.edge[edge_id] = pl;
+    s.player_road_count[pl] -= 1;
+    s.free_roads_remaining  -= 1;
+    check_longest_road(s);
+
+    if (s.free_roads_remaining == 0 || !has_any_legal_road(s, pl)) {
+        s.free_roads_remaining = 0;
+        s.flag                 = Flag::NONE;
+    }
+    check_game_ended(s);
+}
+
+inline void handle_play_yop(GameState& s, uint32_t action) noexcept {
+    if (s.flag != Flag::NONE) return;
+    if (s.dev_card_played)    return;
+    uint32_t off = action - action::PLAY_YEAR_OF_PLENTY;
+    if (off >= 25) return;
+    uint8_t r1 = uint8_t(off / NUM_RESOURCES);
+    uint8_t r2 = uint8_t(off % NUM_RESOURCES);
+
+    uint8_t pl = s.current_player;
+    if (s.player_dev[pl][DEV_YEAR_OF_PLENTY] == 0) return;
+
+    // Bank must cover the requested pair.
+    if (r1 == r2) {
+        if (s.bank[r1] < 2) return;
+    } else {
+        if (s.bank[r1] < 1 || s.bank[r2] < 1) return;
+    }
+
+    s.player_dev[pl][DEV_YEAR_OF_PLENTY] -= 1;
+    s.player_total_dev[pl]               -= 1;
+    s.dev_card_played                     = true;
+
+    s.player_resources[pl][r1] += 1;
+    s.bank[r1]                 -= 1;
+    s.player_handsize[pl]      += 1;
+
+    s.player_resources[pl][r2] += 1;
+    s.bank[r2]                 -= 1;
+    s.player_handsize[pl]      += 1;
+}
+
+inline void handle_play_monopoly(GameState& s, uint32_t action) noexcept {
+    if (s.flag != Flag::NONE) return;
+    if (s.dev_card_played)    return;
+    uint32_t off = action - action::PLAY_MONOPOLY;
+    if (off >= NUM_RESOURCES) return;
+    uint8_t r = uint8_t(off);
+
+    uint8_t pl = s.current_player;
+    if (s.player_dev[pl][DEV_MONOPOLY] == 0) return;
+
+    s.player_dev[pl][DEV_MONOPOLY] -= 1;
+    s.player_total_dev[pl]         -= 1;
+    s.dev_card_played               = true;
+
+    for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
+        if (p == pl) continue;
+        uint8_t take = s.player_resources[p][r];
+        if (take == 0) continue;
+        s.player_resources[p][r]   -= take;
+        s.player_handsize[p]       -= take;
+        s.player_resources[pl][r]  += take;
+        s.player_handsize[pl]      += take;
+    }
+}
+
 // =====================================================================
 // Slice 5: bank / port trade (4:1, 3:1, 2:1)
 // =====================================================================
@@ -770,6 +990,18 @@ inline void handle_trade(GameState& s, uint32_t action) noexcept {
     s.player_handsize[pl]        -= uint8_t(ratio - 1);
 }
 
+// Dispatches dev-play actions (knight / road building / yop / monopoly).
+// Returns true iff an action was matched and routed.
+inline bool dispatch_dev_play(GameState& s, uint32_t action) noexcept {
+    if (action == action::PLAY_KNIGHT)         { handle_play_knight(s); return true; }
+    if (action == action::PLAY_ROAD_BUILDING)  { handle_play_road_building(s); return true; }
+    if (action >= action::PLAY_YEAR_OF_PLENTY
+        && action <  action::YOP_END)          { handle_play_yop(s, action); return true; }
+    if (action >= action::PLAY_MONOPOLY
+        && action <  action::MONOPOLY_END)     { handle_play_monopoly(s, action); return true; }
+    return false;
+}
+
 inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noexcept {
     if (s.flag != Flag::NONE) {
         // Sub-phase active — only the matching sub-phase action is legal.
@@ -792,6 +1024,12 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
                     handle_steal(s, action);
                 }
                 break;
+            case Flag::PLACE_ROAD:
+                if (action >= action::ROAD_BASE
+                    && action <  action::ROAD_BASE + topology::NUM_EDGES) {
+                    handle_place_road(s, action);
+                }
+                break;
             default:
                 break;
         }
@@ -799,9 +1037,9 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
     }
 
     if (s.dice_roll == 0) {
-        // Pre-roll: ROLL_DICE or PLAY_KNIGHT (knight-before-roll is legal).
-        if      (action == action::ROLL_DICE)   handle_roll_dice(s, b);
-        else if (action == action::PLAY_KNIGHT) handle_play_knight(s);
+        // Pre-roll: ROLL_DICE or any non-VP dev play.
+        if (action == action::ROLL_DICE) handle_roll_dice(s, b);
+        else dispatch_dev_play(s, action);
         return;
     }
     // Post-roll: build / trade / dev / end turn.
@@ -811,7 +1049,7 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
     else if (action <  action::ROLL_DICE)                                       handle_build_road(s, action);
     else if (action >= action::TRADE_BASE && action < action::TRADE_END)        handle_trade(s, action);
     else if (action == action::BUY_DEV)                                         handle_buy_dev(s);
-    else if (action == action::PLAY_KNIGHT)                                     handle_play_knight(s);
+    else                                                                        dispatch_dev_play(s, action);
 }
 
 }  // namespace
@@ -908,6 +1146,16 @@ void compute_mask(const GameState& s, [[maybe_unused]] const BoardLayout& b,
                 }
                 break;
             }
+            case Flag::PLACE_ROAD: {
+                uint8_t pl = s.current_player;
+                if (s.player_road_count[pl] > 0) {
+                    for (uint8_t e = 0; e < topology::NUM_EDGES; ++e) {
+                        if (s.edge[e] != NO_PLAYER) continue;
+                        if (road_connects(s, e, pl)) set_bit(action::ROAD_BASE + e);
+                    }
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -916,21 +1164,38 @@ void compute_mask(const GameState& s, [[maybe_unused]] const BoardLayout& b,
 
     uint8_t pl = s.current_player;
 
-    if (s.dice_roll == 0) {
-        // Pre-roll: ROLL_DICE always legal; PLAY_KNIGHT if has + not played.
-        set_bit(action::ROLL_DICE);
-        if (!s.dev_card_played && s.player_dev[pl][0] > 0) {  // 0 = DEV_KNIGHT
-            set_bit(action::PLAY_KNIGHT);
+    // Helper closure for dev-play legality (shared pre/post roll).
+    auto add_dev_play_bits = [&]() noexcept {
+        if (s.dev_card_played) return;
+        if (s.player_dev[pl][DEV_KNIGHT] > 0) set_bit(action::PLAY_KNIGHT);
+        if (s.player_dev[pl][DEV_ROAD_BUILDING] > 0
+            && has_any_legal_road(s, pl))     set_bit(action::PLAY_ROAD_BUILDING);
+        if (s.player_dev[pl][DEV_YEAR_OF_PLENTY] > 0) {
+            for (uint8_t r1 = 0; r1 < NUM_RESOURCES; ++r1) {
+                for (uint8_t r2 = 0; r2 < NUM_RESOURCES; ++r2) {
+                    bool ok = (r1 == r2) ? (s.bank[r1] >= 2)
+                                          : (s.bank[r1] >= 1 && s.bank[r2] >= 1);
+                    if (ok) set_bit(action::PLAY_YEAR_OF_PLENTY + uint32_t(r1) * NUM_RESOURCES + r2);
+                }
+            }
         }
+        if (s.player_dev[pl][DEV_MONOPOLY] > 0) {
+            for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+                set_bit(action::PLAY_MONOPOLY + r);
+            }
+        }
+    };
+
+    if (s.dice_roll == 0) {
+        // Pre-roll: ROLL_DICE always legal; any non-VP dev card playable.
+        set_bit(action::ROLL_DICE);
+        add_dev_play_bits();
         return;
     }
 
     // Post-roll
     set_bit(action::END_TURN);
-
-    if (!s.dev_card_played && s.player_dev[pl][0] > 0) {
-        set_bit(action::PLAY_KNIGHT);
-    }
+    add_dev_play_bits();
 
     // BUY_DEV
     if (can_pay(s, pl, COST_DEV)) {
