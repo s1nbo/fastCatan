@@ -92,6 +92,7 @@ namespace catan {
         bool    dev_card_played;    // current player already played a dev card this turn
         uint8_t current_player;     // whose turn it is (rotates among discarders during DISCARD sub-phase)
         uint8_t rolling_player;     // who rolled the dice this turn; preserved across sub-phases
+        uint8_t free_roads_remaining; // 0..2 during PLACE_ROAD sub-phase from Road Building
 
         // --- Per-player public state (visible to all players) ---
         uint8_t player_handsize[4];        // total resource cards held
