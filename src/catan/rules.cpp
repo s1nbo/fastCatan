@@ -139,6 +139,9 @@ void reset_one(GameState& s, BoardLayout& b, uint64_t seed) noexcept {
     s.longest_road_owner = NO_PLAYER;
     s.largest_army_owner = NO_PLAYER;
 
+    // Trade scratch: no proposer until TRADE_OPEN.
+    s.trade_proposer = NO_PLAYER;
+
     // Bank starts with 19 of each resource.
     for (uint8_t r = 0; r < 5; ++r) s.bank[r] = 19;
 
@@ -308,6 +311,7 @@ constexpr uint8_t WIN_VP = 10;
 // Forward decls — defined later in this anon namespace.
 inline void check_game_ended(GameState& s) noexcept;
 inline void check_longest_road(GameState& s) noexcept;
+inline void clear_trade_scratch(GameState& s) noexcept;
 
 // Build costs, indexed [brick, lumber, wool, grain, ore].
 constexpr uint8_t COST_SETTLEMENT[5] = { 1, 1, 1, 1, 0 };
@@ -519,6 +523,9 @@ inline void handle_end_turn(GameState& s) noexcept {
             s.player_dev_bought_this_turn[p][d]  = 0;
         }
     }
+
+    // Discard any unfinalized trade scratch from this turn.
+    clear_trade_scratch(s);
 
     s.dice_roll       = 0;
     s.dev_card_played = false;
@@ -956,6 +963,169 @@ inline void handle_play_monopoly(GameState& s, uint32_t action) noexcept {
 }
 
 // =====================================================================
+// Player-to-player trade (3-phase: compose -> respond -> confirm)
+// =====================================================================
+
+constexpr uint8_t TR_PENDING = 0;
+constexpr uint8_t TR_ACCEPT  = 1;
+constexpr uint8_t TR_DECLINE = 2;
+constexpr uint8_t TR_NA      = 3;  // proposer's own slot
+
+inline uint8_t get_tr(uint8_t resp, uint8_t p) noexcept {
+    return uint8_t((resp >> (2 * p)) & 0x3);
+}
+inline uint8_t set_tr(uint8_t resp, uint8_t p, uint8_t v) noexcept {
+    return uint8_t((resp & ~uint8_t(0x3 << (2 * p))) | uint8_t((v & 0x3) << (2 * p)));
+}
+
+inline bool trade_scratch_valid(const GameState& s) noexcept {
+    bool give_any = false, want_any = false;
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        if (s.trade_give[r] > 0) give_any = true;
+        if (s.trade_want[r] > 0) want_any = true;
+    }
+    return give_any && want_any;
+}
+
+inline bool trade_scratch_empty(const GameState& s) noexcept {
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        if (s.trade_give[r] > 0 || s.trade_want[r] > 0) return false;
+    }
+    return true;
+}
+
+inline void clear_trade_scratch(GameState& s) noexcept {
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        s.trade_give[r] = 0;
+        s.trade_want[r] = 0;
+    }
+    s.trade_response = 0;
+    s.trade_proposer = NO_PLAYER;
+}
+
+// Compose helpers — only valid post-roll with no active flag.
+inline void handle_trade_add_give(GameState& s, uint32_t action) noexcept {
+    uint32_t r = action - action::TRADE_ADD_GIVE_BASE;
+    if (r >= NUM_RESOURCES) return;
+    uint8_t pl = s.current_player;
+    if (s.player_resources[pl][r] <= s.trade_give[r]) return;  // can't give what you don't own
+    s.trade_give[r] += 1;
+}
+inline void handle_trade_remove_give(GameState& s, uint32_t action) noexcept {
+    uint32_t r = action - action::TRADE_REMOVE_GIVE_BASE;
+    if (r >= NUM_RESOURCES) return;
+    if (s.trade_give[r] == 0) return;
+    s.trade_give[r] -= 1;
+}
+inline void handle_trade_add_want(GameState& s, uint32_t action) noexcept {
+    uint32_t r = action - action::TRADE_ADD_WANT_BASE;
+    if (r >= NUM_RESOURCES) return;
+    if (s.trade_want[r] >= 19) return;  // cap to bank max
+    s.trade_want[r] += 1;
+}
+inline void handle_trade_remove_want(GameState& s, uint32_t action) noexcept {
+    uint32_t r = action - action::TRADE_REMOVE_WANT_BASE;
+    if (r >= NUM_RESOURCES) return;
+    if (s.trade_want[r] == 0) return;
+    s.trade_want[r] -= 1;
+}
+
+// Open the proposal: validate, set TRADE_PENDING flag, hand control to first
+// responder (clockwise from proposer).
+inline void handle_trade_open(GameState& s) noexcept {
+    if (!trade_scratch_valid(s)) return;
+    uint8_t pl = s.current_player;
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        if (s.player_resources[pl][r] < s.trade_give[r]) return;
+    }
+
+    s.trade_proposer = pl;
+    s.trade_response = 0;
+    s.trade_response = set_tr(s.trade_response, pl, TR_NA);
+    s.flag = Flag::TRADE_PENDING;
+
+    // First responder (clockwise from proposer)
+    uint8_t first_resp = uint8_t((pl + 1) & 0x3);
+    s.current_player = first_resp;
+}
+
+// Responder accept/decline. If they auto-fail validation (insufficient resources
+// for the requested bundle), force a decline to keep the protocol clean.
+inline void handle_trade_response(GameState& s, bool wanted_accept) noexcept {
+    if (s.flag != Flag::TRADE_PENDING) return;
+    if (s.current_player == s.trade_proposer) return;  // confirm phase
+    uint8_t pl = s.current_player;
+    if (get_tr(s.trade_response, pl) != TR_PENDING) return;
+
+    bool can_accept = wanted_accept;
+    if (can_accept) {
+        for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+            if (s.player_resources[pl][r] < s.trade_want[r]) {
+                can_accept = false;
+                break;
+            }
+        }
+    }
+    s.trade_response = set_tr(s.trade_response, pl,
+                               can_accept ? TR_ACCEPT : TR_DECLINE);
+
+    // Advance to next pending responder (clockwise from proposer).
+    for (uint8_t i = 1; i < NUM_PLAYERS; ++i) {
+        uint8_t p = uint8_t((s.trade_proposer + i) & 0x3);
+        if (get_tr(s.trade_response, p) == TR_PENDING) {
+            s.current_player = p;
+            return;
+        }
+    }
+    // All responded — back to proposer for confirm/cancel.
+    s.current_player = s.trade_proposer;
+}
+
+inline void handle_trade_confirm(GameState& s, uint32_t action) noexcept {
+    if (s.flag != Flag::TRADE_PENDING) return;
+    if (s.current_player != s.trade_proposer) return;  // wait for confirm phase
+    uint32_t off = action - action::TRADE_CONFIRM_BASE;
+    if (off >= NUM_PLAYERS) return;
+    uint8_t partner = uint8_t(off);
+    if (partner == s.trade_proposer) return;
+    if (get_tr(s.trade_response, partner) != TR_ACCEPT) return;
+
+    uint8_t pl = s.trade_proposer;
+    // Defense in depth: validate both sides still hold the bundles.
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        if (s.player_resources[pl][r]      < s.trade_give[r]) return;
+        if (s.player_resources[partner][r] < s.trade_want[r]) return;
+    }
+
+    int delta_pl = 0;
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        s.player_resources[pl][r]      -= s.trade_give[r];
+        s.player_resources[partner][r] += s.trade_give[r];
+        s.player_resources[partner][r] -= s.trade_want[r];
+        s.player_resources[pl][r]      += s.trade_want[r];
+        delta_pl += int(s.trade_want[r]) - int(s.trade_give[r]);
+    }
+    s.player_handsize[pl]      = uint8_t(int(s.player_handsize[pl]) + delta_pl);
+    s.player_handsize[partner] = uint8_t(int(s.player_handsize[partner]) - delta_pl);
+
+    clear_trade_scratch(s);
+    s.flag = Flag::NONE;
+    // current_player remains proposer — they keep their turn
+}
+
+// Cancel works during compose (no flag) AND during TRADE_PENDING (proposer only).
+inline void handle_trade_cancel(GameState& s) noexcept {
+    if (s.flag == Flag::NONE) {
+        clear_trade_scratch(s);
+        return;
+    }
+    if (s.flag != Flag::TRADE_PENDING) return;
+    if (s.current_player != s.trade_proposer) return;
+    clear_trade_scratch(s);
+    s.flag = Flag::NONE;
+}
+
+// =====================================================================
 // Slice 5: bank / port trade (4:1, 3:1, 2:1)
 // =====================================================================
 
@@ -1002,6 +1172,30 @@ inline bool dispatch_dev_play(GameState& s, uint32_t action) noexcept {
     return false;
 }
 
+// Dispatches the compose-phase trade actions (only legal post-roll, no flag).
+// Returns true iff matched.
+inline bool dispatch_trade_compose(GameState& s, uint32_t action) noexcept {
+    if (action >= action::TRADE_ADD_GIVE_BASE
+        && action <  action::TRADE_ADD_GIVE_BASE + NUM_RESOURCES) {
+        handle_trade_add_give(s, action); return true;
+    }
+    if (action >= action::TRADE_REMOVE_GIVE_BASE
+        && action <  action::TRADE_REMOVE_GIVE_BASE + NUM_RESOURCES) {
+        handle_trade_remove_give(s, action); return true;
+    }
+    if (action >= action::TRADE_ADD_WANT_BASE
+        && action <  action::TRADE_ADD_WANT_BASE + NUM_RESOURCES) {
+        handle_trade_add_want(s, action); return true;
+    }
+    if (action >= action::TRADE_REMOVE_WANT_BASE
+        && action <  action::TRADE_REMOVE_WANT_BASE + NUM_RESOURCES) {
+        handle_trade_remove_want(s, action); return true;
+    }
+    if (action == action::TRADE_OPEN)   { handle_trade_open(s);   return true; }
+    if (action == action::TRADE_CANCEL) { handle_trade_cancel(s); return true; }
+    return false;
+}
+
 inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noexcept {
     if (s.flag != Flag::NONE) {
         // Sub-phase active — only the matching sub-phase action is legal.
@@ -1030,6 +1224,21 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
                     handle_place_road(s, action);
                 }
                 break;
+            case Flag::TRADE_PENDING:
+                if (s.current_player == s.trade_proposer) {
+                    // Confirm phase: pick accepting partner or cancel.
+                    if (action >= action::TRADE_CONFIRM_BASE
+                        && action <  action::TRADE_CONFIRM_BASE + NUM_PLAYERS) {
+                        handle_trade_confirm(s, action);
+                    } else if (action == action::TRADE_CANCEL) {
+                        handle_trade_cancel(s);
+                    }
+                } else {
+                    // Respond phase
+                    if      (action == action::TRADE_ACCEPT)  handle_trade_response(s, true);
+                    else if (action == action::TRADE_DECLINE) handle_trade_response(s, false);
+                }
+                break;
             default:
                 break;
         }
@@ -1042,14 +1251,15 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
         else dispatch_dev_play(s, action);
         return;
     }
-    // Post-roll: build / trade / dev / end turn.
+    // Post-roll: build / bank-trade / dev / pvp-trade compose / end turn.
     if      (action == action::END_TURN)                                       handle_end_turn(s);
     else if (action <  action::CITY_BASE)                                       handle_build_settle(s, b, action);
     else if (action <  action::ROAD_BASE)                                       handle_build_city(s, action);
     else if (action <  action::ROLL_DICE)                                       handle_build_road(s, action);
     else if (action >= action::TRADE_BASE && action < action::TRADE_END)        handle_trade(s, action);
     else if (action == action::BUY_DEV)                                         handle_buy_dev(s);
-    else                                                                        dispatch_dev_play(s, action);
+    else if (dispatch_dev_play(s, action))                                      ;  // handled
+    else                                                                        dispatch_trade_compose(s, action);
 }
 
 }  // namespace
@@ -1156,6 +1366,23 @@ void compute_mask(const GameState& s, [[maybe_unused]] const BoardLayout& b,
                 }
                 break;
             }
+            case Flag::TRADE_PENDING: {
+                if (s.current_player == s.trade_proposer) {
+                    // Confirm phase. CANCEL always legal; CONFIRM_p for accepters.
+                    set_bit(action::TRADE_CANCEL);
+                    for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
+                        if (p == s.trade_proposer) continue;
+                        if (get_tr(s.trade_response, p) == TR_ACCEPT) {
+                            set_bit(action::TRADE_CONFIRM_BASE + p);
+                        }
+                    }
+                } else {
+                    // Respond phase.
+                    set_bit(action::TRADE_ACCEPT);
+                    set_bit(action::TRADE_DECLINE);
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -1231,7 +1458,7 @@ void compute_mask(const GameState& s, [[maybe_unused]] const BoardLayout& b,
         }
     }
 
-    // Trades
+    // Bank/port trades
     for (uint8_t give = 0; give < NUM_RESOURCES; ++give) {
         uint8_t ratio = trade_ratio(s, pl, give);
         if (s.player_resources[pl][give] < ratio) continue;
@@ -1240,6 +1467,33 @@ void compute_mask(const GameState& s, [[maybe_unused]] const BoardLayout& b,
             if (s.bank[get] == 0) continue;
             set_bit(action::TRADE_BASE + uint32_t(give) * NUM_RESOURCES + get);
         }
+    }
+
+    // Player-to-player trade compose actions
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+        if (s.player_resources[pl][r] > s.trade_give[r]) {
+            set_bit(action::TRADE_ADD_GIVE_BASE + r);
+        }
+        if (s.trade_give[r] > 0) {
+            set_bit(action::TRADE_REMOVE_GIVE_BASE + r);
+        }
+        if (s.trade_want[r] < 19) {
+            set_bit(action::TRADE_ADD_WANT_BASE + r);
+        }
+        if (s.trade_want[r] > 0) {
+            set_bit(action::TRADE_REMOVE_WANT_BASE + r);
+        }
+    }
+    if (trade_scratch_valid(s)) {
+        // Proposer must own all give resources to open
+        bool ok = true;
+        for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+            if (s.player_resources[pl][r] < s.trade_give[r]) { ok = false; break; }
+        }
+        if (ok) set_bit(action::TRADE_OPEN);
+    }
+    if (!trade_scratch_empty(s)) {
+        set_bit(action::TRADE_CANCEL);
     }
 }
 

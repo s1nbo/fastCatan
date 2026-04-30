@@ -2,6 +2,8 @@
 // Not the eventual nanobind binding — that lives in bindings/pycatan/.
 #include "rules.hpp"
 #include "mask.hpp"
+#include "obs.hpp"
+#include "batched_env.hpp"
 #include "topology.hpp"
 #include <cstdlib>
 #include <cstdint>
@@ -56,6 +58,11 @@ uint16_t fcatan_turn_count(void* p)       noexcept { return ENV(p)->s.turn_count
 uint8_t  fcatan_longest_road_owner(void* p)  noexcept { return ENV(p)->s.longest_road_owner; }
 uint8_t  fcatan_largest_army_owner(void* p)  noexcept { return ENV(p)->s.largest_army_owner; }
 uint8_t  fcatan_player_discard_remaining(void* p, int pl) noexcept { return ENV(p)->s.player_discard_remaining[pl]; }
+uint8_t  fcatan_free_roads_remaining(void* p)       noexcept { return ENV(p)->s.free_roads_remaining; }
+uint8_t  fcatan_trade_give(void* p, int r)          noexcept { return ENV(p)->s.trade_give[r]; }
+uint8_t  fcatan_trade_want(void* p, int r)          noexcept { return ENV(p)->s.trade_want[r]; }
+uint8_t  fcatan_trade_response_byte(void* p)        noexcept { return ENV(p)->s.trade_response; }
+uint8_t  fcatan_trade_proposer(void* p)             noexcept { return ENV(p)->s.trade_proposer; }
 
 // Board
 uint8_t fcatan_node(void* p, int i)       noexcept { return ENV(p)->s.node[i]; }
@@ -120,6 +127,15 @@ void fcatan_compute_mask(void* p, uint64_t* out_mask) noexcept {
     catan::compute_mask(e->s, e->b, out_mask);
 }
 
+uint32_t fcatan_obs_size() noexcept {
+    return catan::OBS_SIZE;
+}
+
+void fcatan_write_obs(void* p, uint8_t player_pov, float* out) noexcept {
+    auto* e = ENV(p);
+    catan::write_obs(e->s, e->b, player_pov, out);
+}
+
 uint64_t fcatan_state_size() noexcept {
     return uint64_t(sizeof(CatanEnv));
 }
@@ -130,6 +146,61 @@ void fcatan_copy_state(const void* src, void* dst) noexcept {
 
 uint8_t fcatan_state_equal(const void* a, const void* b) noexcept {
     return std::memcmp(a, b, sizeof(CatanEnv)) == 0 ? 1 : 0;
+}
+
+// ============================================================
+// BatchedEnv API
+// ============================================================
+void* fbatched_create(uint32_t n_envs, uint64_t master_seed) noexcept {
+    auto* be = new catan::BatchedEnv{};
+    catan::batched_env_init(*be, n_envs, master_seed);
+    return be;
+}
+
+void fbatched_destroy(void* p) noexcept {
+    if (!p) return;
+    auto* be = static_cast<catan::BatchedEnv*>(p);
+    catan::batched_env_destroy(*be);
+    delete be;
+}
+
+uint32_t fbatched_num_envs(const void* p) noexcept {
+    return static_cast<const catan::BatchedEnv*>(p)->n;
+}
+
+void fbatched_reset(void* p) noexcept {
+    catan::batched_env_reset(*static_cast<catan::BatchedEnv*>(p));
+}
+
+void fbatched_step(void* p, const uint32_t* actions,
+                    float* rewards, uint8_t* dones) noexcept {
+    catan::batched_env_step(*static_cast<catan::BatchedEnv*>(p),
+                             actions, rewards, dones);
+}
+
+void fbatched_write_obs(const void* p, float* out) noexcept {
+    catan::batched_env_write_obs(*static_cast<const catan::BatchedEnv*>(p), out);
+}
+
+void fbatched_write_masks(const void* p, uint64_t* out) noexcept {
+    catan::batched_env_write_masks(*static_cast<const catan::BatchedEnv*>(p), out);
+}
+
+// Read-only state probes for testing.
+uint8_t fbatched_phase(const void* p, uint32_t i) noexcept {
+    return uint8_t(static_cast<const catan::BatchedEnv*>(p)->states[i].phase);
+}
+uint8_t fbatched_current_player(const void* p, uint32_t i) noexcept {
+    return static_cast<const catan::BatchedEnv*>(p)->states[i].current_player;
+}
+uint8_t fbatched_player_handsize(const void* p, uint32_t i, int pl) noexcept {
+    return static_cast<const catan::BatchedEnv*>(p)->states[i].player_handsize[pl];
+}
+uint8_t fbatched_bank(const void* p, uint32_t i, int r) noexcept {
+    return static_cast<const catan::BatchedEnv*>(p)->states[i].bank[r];
+}
+uint8_t fbatched_player_resource(const void* p, uint32_t i, int pl, int r) noexcept {
+    return static_cast<const catan::BatchedEnv*>(p)->states[i].player_resources[pl][r];
 }
 
 #undef ENV
