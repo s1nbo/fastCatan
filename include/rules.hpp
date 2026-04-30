@@ -42,6 +42,18 @@ namespace catan {
         inline constexpr uint32_t YOP_END              = 263;  // exclusive
         inline constexpr uint32_t PLAY_MONOPOLY        = 263;  // [263, 268) base + resource
         inline constexpr uint32_t MONOPOLY_END         = 268;  // exclusive
+
+        // Player-to-player trade (compositional). Compose only valid post-roll
+        // with no active flag; OPEN/ACCEPT/DECLINE/CONFIRM/CANCEL drive the flow.
+        inline constexpr uint32_t TRADE_ADD_GIVE_BASE    = 268;  // [268, 273) +1 of give resource r
+        inline constexpr uint32_t TRADE_REMOVE_GIVE_BASE = 273;  // [273, 278) -1 of give resource r
+        inline constexpr uint32_t TRADE_ADD_WANT_BASE    = 278;  // [278, 283) +1 of want resource r
+        inline constexpr uint32_t TRADE_REMOVE_WANT_BASE = 283;  // [283, 288) -1 of want resource r
+        inline constexpr uint32_t TRADE_OPEN             = 288;  // finalize proposal, broadcast to opponents
+        inline constexpr uint32_t TRADE_ACCEPT           = 289;  // responder accepts the open proposal
+        inline constexpr uint32_t TRADE_DECLINE          = 290;  // responder declines
+        inline constexpr uint32_t TRADE_CONFIRM_BASE     = 291;  // [291, 295) proposer picks accepting partner p
+        inline constexpr uint32_t TRADE_CANCEL           = 295;  // proposer cancels (compose or post-response)
     }
 
 }  // namespace catan

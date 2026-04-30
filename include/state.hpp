@@ -104,6 +104,12 @@ namespace catan {
         uint8_t bank[5];     // resource supply: brick, lumber, wool, grain, ore
         uint8_t dev_deck[5]; // dev cards remaining: knight, VP, road building, year of plenty, monopoly
 
+        // --- Player-to-player trade scratch (compose -> respond -> confirm) ---
+        uint8_t trade_give[5];   // proposer's offered bundle, accumulated via TRADE_ADD_GIVE
+        uint8_t trade_want[5];   // proposer's requested bundle
+        uint8_t trade_response;  // 2 bits per player (LSB-first): 0=PENDING 1=ACCEPT 2=DECLINE 3=N/A(proposer)
+        uint8_t trade_proposer;  // player id who opened the proposal; NO_PLAYER outside trade
+
         // --- RNG (per-env xoshiro128++ state) ---
         Xoshiro128 rng;      // 16 B; seeded in reset_one, advances on dice/dev/steal
     };
