@@ -1,0 +1,8 @@
+{
+  "source_dir": "/Users/sinan/Desktop/catan/fastCatan",
+  "build_dir": "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64",
+  "cmake_path": "/Users/sinan/miniconda3/bin/cmake",
+  "skbuild_path": "/Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/scikit_build_core",
+  "skbuild_version": "0.12.2",
+  "python_executable": "/Users/sinan/Desktop/catan/fastCatan/.venv/bin/python3"
+}
