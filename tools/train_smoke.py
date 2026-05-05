@@ -113,11 +113,12 @@ def main():
         else:
             ties += 1
 
+    n = args.eval_episodes
     print()
-    print("=== eval (deterministic policy vs 3 random opponents, 50 episodes) ===")
-    print(f"  wins:   {wins}/50  ({100*wins/50:.0f}%)")
-    print(f"  losses: {losses}/50")
-    print(f"  ties/truncated: {ties}/50")
+    print(f"=== eval (deterministic policy vs 3 random opponents, {n} episodes) ===")
+    print(f"  wins:   {wins}/{n}  ({100*wins/max(n,1):.0f}%)")
+    print(f"  losses: {losses}/{n}")
+    print(f"  ties/truncated: {ties}/{n}")
 
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)

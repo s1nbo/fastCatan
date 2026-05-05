@@ -2,7 +2,7 @@
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/platlib")
+  set(CMAKE_INSTALL_PREFIX "/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/platlib")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -52,6 +52,9 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
     "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/__init__.py"
     "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/gym_env.py"
     "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/pettingzoo_env.py"
+    "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/tournament.py"
+    "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/alphabeta.py"
+    "/Users/sinan/Desktop/catan/fastCatan/python/fastcatan/selfplay.py"
     )
 endif()
 

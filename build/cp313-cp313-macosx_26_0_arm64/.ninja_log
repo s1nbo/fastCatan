@@ -4,7 +4,7 @@
 7	136	1777899592716513213	CMakeFiles/fastcatan.dir/tools/c_api.cpp.o	f5eb9409df315b2d
 12	227	1777900120825779818	CMakeFiles/fastcatan_core.dir/src/catan/rules.cpp.o	cfb0097ab1caf8d3
 228	263	1777900121041247456	libfastcatan_core.a	c34bfb4f565c73c9
-7	319	1777899592716621130	CMakeFiles/_fastcatan.dir/bindings/pycatan/bindings.cpp.o	5f0a38b7955fe02e
+4	350	1777940945928219633	CMakeFiles/_fastcatan.dir/bindings/pycatan/bindings.cpp.o	5f0a38b7955fe02e
 158	544	1777586874899856452	CMakeFiles/nanobind-static.dir/.venv/lib/python3.13/site-packages/nanobind/src/implicit.cpp.o	c3d4093fc684a7a6
 3	639	1777586874745363890	CMakeFiles/nanobind-static.dir/.venv/lib/python3.13/site-packages/nanobind/src/nb_static_property.cpp.o	cc5dae5208cd970f
 6	660	1777586874747811363	CMakeFiles/nanobind-static.dir/.venv/lib/python3.13/site-packages/nanobind/src/trampoline.cpp.o	4e3f1bf65a6a279d
@@ -21,4 +21,4 @@
 832	874	1777586875573726975	libnanobind-static.a	891e9f873fa37b8f
 263	491	1777900121076516364	bench_step	d7866f4478f72cb9
 263	488	1777900121076610407	bench_batched	f208c9145bbb51ae
-263	503	1777900121076406781	_fastcatan.cpython-313-darwin.so	8a85020a0441038e
+350	522	1777940946274836143	_fastcatan.cpython-313-darwin.so	8a85020a0441038e

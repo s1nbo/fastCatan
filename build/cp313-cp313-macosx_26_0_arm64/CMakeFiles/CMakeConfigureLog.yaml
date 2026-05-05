@@ -2409,3 +2409,663 @@ events:
         
       exitCode: 1
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_54c64
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_54c64.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-TFJWFn/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_2b06c
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_2b06c.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-PE0Xbr/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_6796c
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_6796c.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-5VY0Um/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_376e4
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_376e4.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-6vl5So/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_94716
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_94716.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-ch76mJ/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_64ea0
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_64ea0.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-agYsLN/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_1c1ee
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_1c1ee.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-azis51/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_fe9cf
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_fe9cf.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-EBFgl3/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_a976e
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_a976e.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-DXAGLv/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:197 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/CheckIPOSupported.cmake:320 (_ipo_run_language_check)"
+      - "CMakeLists.txt:14 (check_ipo_supported)"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "_IPO_LANGUAGE_CHECK_RESULT"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/bin'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v
+        [1/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/foo.dir/foo.cpp.o -MF CMakeFiles/foo.dir/foo.cpp.o.d -o CMakeFiles/foo.dir/foo.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/foo.cpp
+        [2/4] /usr/bin/clang++   -g -flto=thin -arch arm64 -MD -MT CMakeFiles/boo.dir/main.cpp.o -MF CMakeFiles/boo.dir/main.cpp.o.d -o CMakeFiles/boo.dir/main.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/_CMakeLTOTest-CXX/src/main.cpp
+        [3/4] : && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E rm -f libfoo.a && "/usr/bin/ar" qc libfoo.a  CMakeFiles/foo.dir/foo.cpp.o && "/usr/bin/ranlib" libfoo.a && /Users/sinan/Desktop/catan/fastCatan/.venv/lib/python3.13/site-packages/cmake/data/bin/cmake -E touch libfoo.a && :
+        [4/4] : && /usr/bin/clang++ -g -flto=thin -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/boo.dir/main.cpp.o -o boo  libfoo.a && :
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:333 (try_compile)"
+      - ".venv/lib/python3.13/site-packages/cmake/data/share/cmake-4.3/Modules/FindOpenMP.cmake:640 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:36 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt"
+      binary: "/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_OSX_ARCHITECTURES: ""
+      CMAKE_OSX_DEPLOYMENT_TARGET: ""
+      CMAKE_OSX_SYSROOT: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_Xclang fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt'
+        
+        Run Build Command(s): /Users/sinan/Desktop/catan/fastCatan/.venv/bin/ninja -v cmTC_327f5
+        [1/2] /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt/OpenMPTryFlag.cpp
+        FAILED: [code=1] CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o 
+        /usr/bin/clang++   -Xclang -fopenmp -std=c++23 -arch arm64 -MD -MT CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_327f5.dir/OpenMPTryFlag.cpp.o -c /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt/OpenMPTryFlag.cpp
+        /Users/sinan/Desktop/catan/fastCatan/build/cp313-cp313-macosx_26_0_arm64/CMakeFiles/CMakeScratch/TryCompile-sBZPgt/OpenMPTryFlag.cpp:2:10: fatal error: 'omp.h' file not found
+            2 | #include <omp.h>
+              |          ^~~~~~~
+        1 error generated.
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+...

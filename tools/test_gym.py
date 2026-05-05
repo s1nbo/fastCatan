@@ -21,8 +21,14 @@ def test_reset():
     fails += fail(obs.shape == (fc.OBS_SIZE,), f"obs shape {obs.shape}")
     fails += fail(obs.dtype == np.float32, f"obs dtype {obs.dtype}")
     fails += fail("action_mask" in info, "no action_mask in info")
-    fails += fail(info["action_mask"].shape == (fc.MASK_WORDS,),
+    # action_mask is now unpacked bool[NUM_ACTIONS] for SB3 compatibility.
+    fails += fail(info["action_mask"].shape == (fc.NUM_ACTIONS,),
                   f"mask shape {info['action_mask'].shape}")
+    fails += fail(info["action_mask"].dtype == bool,
+                  f"mask dtype {info['action_mask'].dtype}")
+    fails += fail("action_mask_packed" in info, "no action_mask_packed in info")
+    fails += fail(info["action_mask_packed"].shape == (fc.MASK_WORDS,),
+                  f"packed mask shape {info['action_mask_packed'].shape}")
     fails += fail("current_player" in info, "no current_player in info")
     fails += fail("phase" in info, "no phase in info")
     return fails
@@ -41,24 +47,25 @@ def test_spaces():
 def test_step_random_play():
     """Random legal play with both seats — game should terminate."""
     rng = np.random.default_rng(7)
+    # Use the packed-mask policy for the learner since random_legal_policy
+    # was written against the packed format. Opponent (in env) also uses it.
     opponent = fc.random_legal_policy(rng)
-    env = fc.GymEnv(seat=0, seed=42, opponent_fn=opponent, max_steps=10000)
+    env = fc.GymEnv(seat=0, seed=42, opponent_fn=opponent, max_steps=20000)
     obs, info = env.reset(seed=42)
 
     fails = 0
     n_steps = 0
     terminated = False
     truncated = False
-    total_reward = 0.0
-    for _ in range(10000):
+    reward = 0.0
+    for _ in range(20000):
         if not info["is_learner_turn"]:
             fails += fail(False, "after _advance_to_learner, should be learner turn")
             break
-        # Pick random legal action for learner.
-        a = opponent(obs, info["action_mask"])
+        # Use the packed mask form to drive the random_legal_policy.
+        a = opponent(obs, info["action_mask_packed"])
         obs, reward, terminated, truncated, info = env.step(a)
         n_steps += 1
-        total_reward += reward
         if terminated or truncated:
             break
 
@@ -73,7 +80,7 @@ def test_lowest_legal_deterministic():
     seq1 = []
     obs, info = env.reset(seed=42)
     for _ in range(50):
-        a = fc.lowest_legal_policy(obs, info["action_mask"])
+        a = fc.lowest_legal_policy(obs, info["action_mask_packed"])
         obs, reward, terminated, truncated, info = env.step(a)
         seq1.append(int(a))
         if terminated or truncated:
@@ -83,7 +90,7 @@ def test_lowest_legal_deterministic():
     seq2 = []
     obs, info = env2.reset(seed=42)
     for _ in range(50):
-        a = fc.lowest_legal_policy(obs, info["action_mask"])
+        a = fc.lowest_legal_policy(obs, info["action_mask_packed"])
         obs, reward, terminated, truncated, info = env2.step(a)
         seq2.append(int(a))
         if terminated or truncated:

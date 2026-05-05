@@ -75,7 +75,7 @@ CMAKE_FIND_ROOT_PATH_MODE_PACKAGE:PATH=BOTH
 CMAKE_INSTALL_NAME_TOOL:FILEPATH=/usr/bin/install_name_tool
 
 //Install path prefix, prepended onto install directories.
-CMAKE_INSTALL_PREFIX:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/platlib
+CMAKE_INSTALL_PREFIX:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/platlib
 
 //Path to a program.
 CMAKE_LINKER:FILEPATH=/usr/bin/ld
@@ -242,15 +242,15 @@ SKBUILD:STRING=2
 
 SKBUILD_CORE_VERSION:STRING=0.12.2
 
-SKBUILD_DATA_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/data
+SKBUILD_DATA_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/data
 
-SKBUILD_HEADERS_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/headers
+SKBUILD_HEADERS_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/headers
 
-SKBUILD_METADATA_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/metadata
+SKBUILD_METADATA_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/metadata
 
-SKBUILD_NULL_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/null
+SKBUILD_NULL_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/null
 
-SKBUILD_PLATLIB_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/platlib
+SKBUILD_PLATLIB_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/platlib
 
 SKBUILD_PROJECT_NAME:STRING=fastcatan
 
@@ -262,7 +262,7 @@ SKBUILD_SABI_COMPONENT:STRING=
 
 SKBUILD_SABI_VERSION:STRING=
 
-SKBUILD_SCRIPTS_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpay0kkqsu/wheel/scripts
+SKBUILD_SCRIPTS_DIR:PATH=/var/folders/08/rsx4h1d13pq86h66nsb1zh500000gn/T/tmpjemqoarm/wheel/scripts
 
 SKBUILD_SOABI:STRING=cpython-313-darwin
 
