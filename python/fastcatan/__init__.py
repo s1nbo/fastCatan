@@ -32,6 +32,23 @@ try:
 except ImportError:
     _PZ = False
 
+# Tournament harness (no external dependencies beyond fastcatan + numpy).
+from .tournament import (  # noqa: F401
+    play,
+    Policy,
+    TournamentResult,
+    random_legal_policy_for_eval,
+    lowest_legal_policy_for_eval,
+)
+from .alphabeta import (  # noqa: F401
+    AlphaBetaPlayer,
+    default_heuristic,
+)
+from .selfplay import (  # noqa: F401
+    policy_from_sb3,
+    FrozenSelfPlayOpponent,
+)
+
 __all__ = [
     "BatchedEnv",
     "Env",
@@ -49,5 +66,17 @@ if _GYM:
     __all__ += ["GymEnv", "random_legal_policy", "lowest_legal_policy", "unpack_mask"]
 if _PZ:
     __all__ += ["CatanAECEnv"]
+
+__all__ += [
+    "play",
+    "Policy",
+    "TournamentResult",
+    "random_legal_policy_for_eval",
+    "lowest_legal_policy_for_eval",
+    "AlphaBetaPlayer",
+    "default_heuristic",
+    "policy_from_sb3",
+    "FrozenSelfPlayOpponent",
+]
 
 __version__ = "0.1.0"

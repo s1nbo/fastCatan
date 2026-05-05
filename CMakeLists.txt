@@ -70,6 +70,9 @@ if(SKBUILD)
     install(FILES python/fastcatan/__init__.py
                   python/fastcatan/gym_env.py
                   python/fastcatan/pettingzoo_env.py
+                  python/fastcatan/tournament.py
+                  python/fastcatan/alphabeta.py
+                  python/fastcatan/selfplay.py
             DESTINATION fastcatan)
 endif()
 
