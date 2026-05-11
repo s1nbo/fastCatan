@@ -22,7 +22,7 @@ namespace catan::topology {
     inline constexpr uint8_t NO_EDGE = 0xFF;
     inline constexpr uint8_t NO_PORT = 0xFF;
 
-    inline constexpr std::array<std::array<uint8_t, 6>, 19> hex_to_hex = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_NEIGHBORS_PER_HEX>, NUM_HEXES> hex_to_hex = {{
         {{ 0x01, 0x03, 0x04, 0xFF, 0xFF, 0xFF }},
         {{ 0x00, 0x02, 0x04, 0x05, 0xFF, 0xFF }},
         {{ 0x01, 0x05, 0x06, 0xFF, 0xFF, 0xFF }},
@@ -44,7 +44,7 @@ namespace catan::topology {
         {{ 0x0E, 0x0F, 0x11, 0xFF, 0xFF, 0xFF }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 6>, 19> hex_to_node = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_NODES_PER_HEX>, NUM_HEXES> hex_to_node = {{
         {{ 0x00, 0x01, 0x02, 0x08, 0x09, 0x0A }},
         {{ 0x02, 0x03, 0x04, 0x0A, 0x0B, 0x0C }},
         {{ 0x04, 0x05, 0x06, 0x0C, 0x0D, 0x0E }},
@@ -66,7 +66,7 @@ namespace catan::topology {
         {{ 0x2B, 0x2C, 0x2D, 0x33, 0x34, 0x35 }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 6>, 19> hex_to_edge = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_EDGES_PER_HEX>, NUM_HEXES> hex_to_edge = {{
         {{ 0x00, 0x01, 0x06, 0x07, 0x0B, 0x0C }},
         {{ 0x02, 0x03, 0x07, 0x08, 0x0D, 0x0E }},
         {{ 0x04, 0x05, 0x08, 0x09, 0x0F, 0x10 }},
@@ -88,7 +88,7 @@ namespace catan::topology {
         {{ 0x3B, 0x3C, 0x40, 0x41, 0x46, 0x47 }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 3>, 54> node_to_hex = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_HEXES_PER_NODE>, NUM_NODES> node_to_hex = {{
         {{ 0x00, 0xFF, 0xFF }},
         {{ 0x00, 0xFF, 0xFF }},
         {{ 0x00, 0x01, 0xFF }},
@@ -145,7 +145,7 @@ namespace catan::topology {
         {{ 0x12, 0xFF, 0xFF }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 3>, 54> node_to_node = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_EDGES_PER_NODE>, NUM_NODES> node_to_node = {{
         {{ 0x01, 0x08, 0xFF }},
         {{ 0x00, 0x02, 0xFF }},
         {{ 0x01, 0x03, 0x0A }},
@@ -202,7 +202,7 @@ namespace catan::topology {
         {{ 0x2D, 0x34, 0xFF }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 3>, 54> node_to_edge = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_EDGES_PER_NODE>, NUM_NODES> node_to_edge = {{
         {{ 0x00, 0x06, 0xFF }},
         {{ 0x00, 0x01, 0xFF }},
         {{ 0x01, 0x02, 0x07 }},
@@ -259,7 +259,7 @@ namespace catan::topology {
         {{ 0x41, 0x47, 0xFF }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 2>, 72> edge_to_hex = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_HEXES_PER_EDGE>, NUM_EDGES> edge_to_hex = {{
         {{ 0x00, 0xFF }},
         {{ 0x00, 0xFF }},
         {{ 0x01, 0xFF }},
@@ -334,7 +334,7 @@ namespace catan::topology {
         {{ 0x12, 0xFF }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 2>, 72> edge_to_node = {{
+    inline constexpr std::array<std::array<uint8_t, 2>, NUM_EDGES> edge_to_node = {{
         {{ 0x00, 0x01 }},
         {{ 0x01, 0x02 }},
         {{ 0x02, 0x03 }},
@@ -409,7 +409,7 @@ namespace catan::topology {
         {{ 0x34, 0x35 }},
     }};
 
-    inline constexpr std::array<std::array<uint8_t, 4>, 72> edge_to_edge = {{
+    inline constexpr std::array<std::array<uint8_t, MAX_NEIGHBORS_PER_EDGE>, NUM_EDGES> edge_to_edge = {{
         {{ 0x01, 0x06, 0xFF, 0xFF }},
         {{ 0x00, 0x02, 0x07, 0xFF }},
         {{ 0x01, 0x03, 0x07, 0xFF }},
@@ -484,59 +484,18 @@ namespace catan::topology {
         {{ 0x41, 0x46, 0xFF, 0xFF }},
     }};
 
-    // Port placement: two valid Catan layouts. BoardLayout.port_layout selects
-    // 0 = A, 1 = B per episode. Each entry is the pair of coastal nodes that
-    // form the port edge. Types (2:1 specific / 3:1 generic) are shuffled onto
-    // the chosen pattern's 9 slots at reset.
-    //
-    // Pattern A: matches Catanatron's standard port placement. Used as the
-    // canonical layout for cross-validation against Catanatron.
-    inline constexpr std::array<std::array<uint8_t, 2>, 9> port_to_node_A = {{
-        {{ 0x00, 0x01 }},   // (0, 1)
-        {{ 0x03, 0x04 }},   // (3, 4)
-        {{ 0x06, 0x0E }},   // (6, 14)
-        {{ 0x07, 0x11 }},   // (7, 17)
-        {{ 0x1A, 0x25 }},   // (26, 37)
-        {{ 0x1C, 0x26 }},   // (28, 38)
-        {{ 0x2D, 0x2E }},   // (45, 46)
-        {{ 0x2F, 0x30 }},   // (47, 48)
-        {{ 0x33, 0x34 }},   // (51, 52)
+    // Port placement. Node pairs derived from edge IDs:
+    //   0x00 0x03 0x11 0x26 0x3D 0x45 0x42 0x31 0x12
+    inline constexpr std::array<std::array<uint8_t, 2>, NUM_PORTS> port_to_node = {{
+        {{ 0x00, 0x01 }},   // edge 0x00
+        {{ 0x03, 0x04 }},   // edge 0x03
+        {{ 0x0E, 0x0F }},   // edge 0x11
+        {{ 0x1A, 0x25 }},   // edge 0x26
+        {{ 0x2D, 0x2E }},   // edge 0x3D
+        {{ 0x32, 0x33 }},   // edge 0x45
+        {{ 0x2F, 0x30 }},   // edge 0x42
+        {{ 0x1C, 0x26 }},   // edge 0x31
+        {{ 0x07, 0x11 }},   // edge 0x12
     }};
-
-    // Pattern B: 180-degree rotation of A (node x -> 53-x). Disjoint from A
-    // by port edge; uses different 9 coastal slots around the rim.
-    inline constexpr std::array<std::array<uint8_t, 2>, 9> port_to_node_B = {{
-        {{ 0x34, 0x35 }},
-        {{ 0x31, 0x32 }},
-        {{ 0x26, 0x27 }},
-        {{ 0x10, 0x1B }},
-        {{ 0x07, 0x08 }},
-        {{ 0x05, 0x06 }},
-        {{ 0x02, 0x03 }},
-        {{ 0x0F, 0x19 }},
-        {{ 0x24, 0x2E }},
-    }};
-
-    // Reverse lookups: node -> port slot (or NO_PORT) per pattern. Generated
-    // from port_to_node_*; used at settlement-build to grant port access.
-    inline constexpr std::array<uint8_t, 54> node_to_port_A = []{
-        std::array<uint8_t, 54> a{};
-        for (auto& v : a) v = NO_PORT;
-        for (uint8_t p = 0; p < 9; ++p) {
-            a[port_to_node_A[p][0]] = p;
-            a[port_to_node_A[p][1]] = p;
-        }
-        return a;
-    }();
-
-    inline constexpr std::array<uint8_t, 54> node_to_port_B = []{
-        std::array<uint8_t, 54> a{};
-        for (auto& v : a) v = NO_PORT;
-        for (uint8_t p = 0; p < 9; ++p) {
-            a[port_to_node_B[p][0]] = p;
-            a[port_to_node_B[p][1]] = p;
-        }
-        return a;
-    }();
 
 }  // namespace catan::topology

@@ -2,13 +2,12 @@
 """Visual sanity-check for include/topology.hpp.
 
 Renders the standard 19-hex Catan board with all IDs labeled:
-  - hex IDs at hex centers (yellow)
-  - node IDs at corners (white circles)
-  - edge IDs at edge midpoints (small)
-  - port pattern A in red, port pattern B in blue (overlaid)
+  - hex IDs at hex centers
+  - node IDs at corners (port-nodes shown in red)
+  - edge IDs at edge midpoints
 
 Usage:
-    python3 tools/viz_topology.py [--save out.png] [--no-edges] [--pattern A|B|both]
+    python3 tools/viz_topology.py [--save out.png] [--no-edges]
 
 Verify by eye: every node/edge ID matches its position on the board, and
 ports sit on the expected coastal edges.
@@ -62,23 +61,21 @@ def _parse_table(text: str, name: str) -> tuple[tuple[int, ...], ...]:
     return tuple(out)
 
 _HDR = _read_header()
-HEX_NODE    = _parse_table(_HDR, "hex_to_node")
-EDGE_NODE   = _parse_table(_HDR, "edge_to_node")
-PORT_NODE_A = _parse_table(_HDR, "port_to_node_A")
-PORT_NODE_B = _parse_table(_HDR, "port_to_node_B")
+HEX_NODE  = _parse_table(_HDR, "hex_to_node")
+EDGE_NODE = _parse_table(_HDR, "edge_to_node")
+PORT_NODE = _parse_table(_HDR, "port_to_node")
 
 NUM_HEXES = len(HEX_NODE)
 NUM_NODES = max(max(row) for row in HEX_NODE) + 1
 NUM_EDGES = len(EDGE_NODE)
-NUM_PORTS = len(PORT_NODE_A)
+NUM_PORTS = len(PORT_NODE)
 
 assert (NUM_HEXES, NUM_NODES, NUM_EDGES, NUM_PORTS) == (19, 54, 72, 9), (
     f"unexpected counts: {(NUM_HEXES, NUM_NODES, NUM_EDGES, NUM_PORTS)}"
 )
 assert all(len(row) == 6 for row in HEX_NODE), "hex_to_node rows must be 6-wide"
 assert all(len(row) == 2 for row in EDGE_NODE), "edge_to_node rows must be 2-wide"
-assert all(len(row) == 2 for row in PORT_NODE_A), "port_to_node_A rows must be 2-wide"
-assert all(len(row) == 2 for row in PORT_NODE_B), "port_to_node_B rows must be 2-wide"
+assert all(len(row) == 2 for row in PORT_NODE), "port_to_node rows must be 2-wide"
 
 # Hex layout: rows of 3, 4, 5, 4, 3.
 HEX_ROWS = [3, 4, 5, 4, 3]
@@ -139,7 +136,7 @@ def compute_node_positions() -> list[tuple[float, float]]:
 # Drawing
 # ---------------------------------------------------------------------
 
-def draw(out_path: str | None, draw_edges: bool, pattern: str):
+def draw(out_path: str | None, draw_edges: bool):
     nodes = compute_node_positions()
     fig, ax = plt.subplots(figsize=(13, 13))
     ax.set_aspect("equal")
@@ -154,7 +151,7 @@ def draw(out_path: str | None, draw_edges: bool, pattern: str):
             edgecolor="#888", facecolor="#f7e9b0", linewidth=1.2,
         )
         ax.add_patch(hexagon)
-        ax.text(cx, cy + 0.0, f"H{hid}",
+        ax.text(cx, cy + 0.0, f"0x{hid:02X}",
                 ha="center", va="center", fontsize=11,
                 color="#a04000", fontweight="bold")
 
@@ -171,38 +168,24 @@ def draw(out_path: str | None, draw_edges: bool, pattern: str):
             length = math.hypot(dx, dy) or 1.0
             nx, ny = -dy / length, dx / length
             offset = 0.10
-            ax.text(mx + nx * offset, my + ny * offset, f"e{eid}",
+            ax.text(mx + nx * offset, my + ny * offset, f"0x{eid:02X}",
                     ha="center", va="center", fontsize=6.5,
                     color="#1a5e1a", zorder=3)
 
-    # nodes
+    # nodes — port-nodes in red, others white
+    PORT_NODES = {n for pair in PORT_NODE for n in pair}
+    RED = "#e74c3c"
     for nid, (x, y) in enumerate(nodes):
-        circle = Circle((x, y), 0.13, facecolor="white",
-                        edgecolor="black", linewidth=1.0, zorder=4)
-        ax.add_patch(circle)
-        ax.text(x, y, f"{nid}", ha="center", va="center",
-                fontsize=7.5, color="black", zorder=5)
-
-    # ports
-    def draw_ports(table, color, label_prefix, dy_offset):
-        for pid, (a, b) in enumerate(table):
-            ax_, ay_ = nodes[a]
-            bx_, by_ = nodes[b]
-            mx, my = (ax_ + bx_) / 2.0, (ay_ + by_) / 2.0
-            # marker
-            ax.plot(mx, my + dy_offset, marker="s", markersize=12,
-                    markerfacecolor=color, markeredgecolor="black", zorder=6)
-            ax.text(mx, my + dy_offset, f"{label_prefix}{pid}",
-                    ha="center", va="center", fontsize=7,
-                    color="white", fontweight="bold", zorder=7)
-
-    if pattern in ("A", "both"):
-        draw_ports(PORT_NODE_A, "#c0392b", "A", dy_offset=0.32)
-    if pattern in ("B", "both"):
-        draw_ports(PORT_NODE_B, "#1f4e8c", "B", dy_offset=-0.32)
-
-    title = f"Catan topology — pattern {pattern}"
-    ax.set_title(title, fontsize=14)
+        if nid in PORT_NODES:
+            ax.add_patch(Circle((x, y), 0.16, facecolor=RED,
+                                edgecolor="black", linewidth=1.0, zorder=4))
+            tcolor = "white"
+        else:
+            ax.add_patch(Circle((x, y), 0.13, facecolor="white",
+                                edgecolor="black", linewidth=1.0, zorder=4))
+            tcolor = "black"
+        ax.text(x, y, f"{nid:02X}", ha="center", va="center",
+                fontsize=7.0, color=tcolor, fontweight="bold", zorder=5)
 
     pad = 1.2
     xs = [p[0] for p in nodes]
@@ -224,9 +207,8 @@ def main():
     p.add_argument("--save", help="output PNG path; omit to open window")
     p.add_argument("--no-edges", action="store_true",
                    help="skip edge drawing/labels (less cluttered)")
-    p.add_argument("--pattern", choices=["A", "B", "both"], default="both")
     args = p.parse_args()
-    draw(args.save, draw_edges=not args.no_edges, pattern=args.pattern)
+    draw(args.save, draw_edges=not args.no_edges)
 
 
 if __name__ == "__main__":
