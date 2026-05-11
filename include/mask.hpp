@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include "state.hpp"
-#include "rules.hpp"
 
 namespace catan {
 

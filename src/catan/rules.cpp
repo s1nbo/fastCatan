@@ -8,28 +8,22 @@
 
 namespace catan {
 
-// Forward decl: full-recompute mask body lives at the bottom of the file
-// (after all sub-phase helpers). Both reset_one and step_one call this
-// to refresh GameState::action_mask after any state mutation.
-namespace { inline void refresh_action_mask(GameState& s, const BoardLayout& b) noexcept; }
-
-// Forward decl for surgical update covering ONLY the trade-compose bit
-// range [268, 286). Used after ADD GIVE/WANT compose actions —
-// those don't touch flag/dice/resources/bank, so other mask bits are
-// unaffected and we can skip the full recompute.
-namespace { inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexcept; }
-
+// Forward decls — definitions live at the bottom of the file, after the sub-phase helpers they depend on. refresh_action_mask does a full
+// recompute using recompute_full; refresh_compose_mask_bits is a update covering only the trade-compose bit range [268, 286), used after ADD GIVE/WANT.
 namespace {
-
+    inline void refresh_action_mask(GameState& s, const BoardLayout& b) noexcept;
+    inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexcept;
+}
+namespace {
 // 19 hex tiles: 3 brick, 4 lumber, 4 wool, 4 grain, 3 ore, 1 desert.
 // Resource codes match BoardLayout::hex_resource semantics in state.hpp.
 constexpr uint8_t HEX_RESOURCE_BAG[19] = {
-    0, 0, 0,
-    1, 1, 1, 1,
-    2, 2, 2, 2,
-    3, 3, 3, 3,
-    4, 4, 4,
-    5,
+    0, 0, 0, // Brick
+    1, 1, 1, 1, // Lumber
+    2, 2, 2, 2, // Wool
+    3, 3, 3, 3, // Grain
+    4, 4, 4, // Ore
+    5, // Desert
 };
 
 // 18 number tokens placed on non-desert hexes. Skips 7 (the robber roll).
