@@ -20,13 +20,13 @@ namespace catan {
     }
 
     // ---------------------------------------------------------------------
-    // Phase: top-level game stage. Drives which actions are legal.
+    // Phase: top-level game phase.
     // ---------------------------------------------------------------------
     enum class Phase : uint8_t {
-        INITIAL_PLACEMENT_1 = 0, // forward order: each player places 1st settlement + road
-        INITIAL_PLACEMENT_2,     // reverse order: each player places 2nd settlement + road
-        MAIN,                    // normal turns: roll dice, build, trade, dev cards
-        ENDED,                   // terminal: a player reached 10 VP
+        INITIAL_PLACEMENT_1 = 0,
+        INITIAL_PLACEMENT_2,
+        MAIN,
+        ENDED,
     };
 
     // ---------------------------------------------------------------------
@@ -61,13 +61,13 @@ namespace catan {
     // ---------------------------------------------------------------------
     struct alignas(64) GameState {
         // --- Board state ---
-        uint8_t node[54];   // bits 0-1: level (00=empty, 01=settlement, 10=city); bits 2-4: owner (000=P0, 001=P1, 010=P2, 011=P3, 111=NO_PLAYER); bits 5-7: unused
-        uint8_t edge[72];   // owner id or EDGE_EMPTY
-        uint8_t robber_hex; // hex index of current robber
+        uint8_t node[54];  
+        uint8_t edge[72];
+        uint8_t robber_hex;
 
         // --- Turn / phase state ---
         uint8_t  dice_roll;    // 0 if not yet rolled this turn, else 2..12
-        uint16_t turn_count;  // monotonic turn counter (termination cap)
+        uint16_t turn_count;
         Phase    phase;        // INITIAL_PLACEMENT_1 / _2 / MAIN / ENDED
         Flag     flag;         // forced-action override; NONE during normal play
         uint8_t  start_player; // who began initial placement; phase 1 clockwise from here, phase 2 counter-clockwise back to here
@@ -90,8 +90,8 @@ namespace catan {
         uint8_t longest_road_owner; // player id, or sentinel if none
         uint8_t largest_army_owner; // player id, or sentinel if none
         bool    dev_card_played;    // current player already played a dev card this turn
-        uint8_t current_player;     // whose turn it is (rotates among discarders during DISCARD sub-phase)
-        uint8_t rolling_player;     // who rolled the dice this turn; preserved across sub-phases
+        uint8_t current_player;     // whose turn it is; preserved across sub-phases
+        uint8_t discarding_player;  // active discarder during DISCARD_RESOURCES sub-phase
         uint8_t free_roads_remaining; // 0..2 during PLACE_ROAD sub-phase from Road Building
 
         // --- Per-player public state (visible to all players) ---
@@ -122,8 +122,6 @@ namespace catan {
     // Just for Checking.
     static_assert(std::is_trivially_copyable_v<GameState>,
                   "GameState must be trivially copyable for memcpy cloning");
-    static_assert(alignof(GameState) == 64,
-                  "GameState must be 64-byte aligned (cache line)");
     static_assert(sizeof(GameState) == 384,
                  "GameState must be exactly 6 cache lines; update if layout changes intentionally");
     static_assert(std::is_trivially_copyable_v<BoardLayout>,

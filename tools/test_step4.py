@@ -68,7 +68,7 @@ step_   = _b("fcatan_step",    U8,   VP, U32)
 phase           = _b("fcatan_phase",            U8, VP)
 flag            = _b("fcatan_flag",             U8, VP)
 current_player  = _b("fcatan_current_player",   U8, VP)
-rolling_player  = _b("fcatan_rolling_player",   U8, VP)
+discarding_player = _b("fcatan_discarding_player", U8, VP)
 dice_roll       = _b("fcatan_dice_roll",        U8, VP)
 robber_hex      = _b("fcatan_robber_hex",       U8, VP)
 discard_left    = _b("fcatan_player_discard_remaining", U8, VP, I)
@@ -172,7 +172,6 @@ def test_seven_no_discard():
     e.step(ROLL_DICE)
     fails += fail(dice_roll(e.h) == 7, "expected 7")
     fails += fail(flag(e.h) == FLAG_MOVE_ROBBER, f"flag={flag(e.h)} (want MOVE_ROBBER)")
-    fails += fail(rolling_player(e.h) == pre_player, "rolling_player not preserved")
     fails += fail(current_player(e.h) == pre_player, "current_player changed without discards")
     return fails
 
@@ -195,11 +194,11 @@ def test_seven_with_discards():
     e.step(ROLL_DICE)
     fails += fail(dice_roll(e.h) == 7, f"expected 7, got {dice_roll(e.h)}")
     fails += fail(flag(e.h) == FLAG_DISCARD, f"flag={flag(e.h)} (want DISCARD)")
-    fails += fail(rolling_player(e.h) == pre, "rolling_player not set to pre-roll player")
+    fails += fail(current_player(e.h) == pre, "current_player must stay as turn owner")
     fails += fail(discard_left(e.h, other) == p_hand(e.h, other) // 2,
                   f"discard_remaining wrong: {discard_left(e.h, other)} for hand {p_hand(e.h, other)}")
-    fails += fail(current_player(e.h) == other,
-                  f"current_player should be discarder {other}, got {current_player(e.h)}")
+    fails += fail(discarding_player(e.h) == other,
+                  f"discarding_player should be {other}, got {discarding_player(e.h)}")
     return fails
 
 
@@ -212,7 +211,7 @@ def test_discard_one_card():
     give_res(e.h, other, R_BRICK, 12)  # plenty
     e.step(ROLL_DICE)
     if flag(e.h) != FLAG_DISCARD: return 0
-    discarder = current_player(e.h)
+    discarder = discarding_player(e.h)
 
     fails = 0
     # discarder must have at least some brick to discard
@@ -240,7 +239,7 @@ def test_discard_no_resource_nop():
     give_res(e.h, other, R_BRICK, 12)  # only brick
     e.step(ROLL_DICE)
     if flag(e.h) != FLAG_DISCARD: return 0
-    discarder = current_player(e.h)
+    discarder = discarding_player(e.h)
 
     # Try discarding wool (might or might not have any depending on initial placement)
     if p_res(e.h, discarder, R_WOOL) > 0:
@@ -278,15 +277,15 @@ def test_full_discard_then_move_robber():
     while flag(e.h) == FLAG_DISCARD and safety < 30:
         safety += 1
         # discard whatever resource the discarder has
-        d = current_player(e.h)
+        d = discarding_player(e.h)
         for r in range(5):
             if p_res(e.h, d, r) > 0:
                 e.step(DISCARD_BASE + r)
                 break
 
     fails += fail(flag(e.h) == FLAG_MOVE_ROBBER, f"flag after discards={flag(e.h)} (want MOVE_ROBBER)")
-    fails += fail(current_player(e.h) == rolling_player(e.h),
-                  "current should return to rolling player after discards")
+    fails += fail(current_player(e.h) == pre,
+                  "current_player must remain as turn owner across discards")
     return fails
 
 

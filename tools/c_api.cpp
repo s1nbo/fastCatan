@@ -51,7 +51,7 @@ uint8_t  fcatan_phase(void* p)            noexcept { return uint8_t(ENV(p)->s.ph
 uint8_t  fcatan_flag(void* p)             noexcept { return uint8_t(ENV(p)->s.flag); }
 uint8_t  fcatan_current_player(void* p)   noexcept { return ENV(p)->s.current_player; }
 uint8_t  fcatan_start_player(void* p)     noexcept { return ENV(p)->s.start_player; }
-uint8_t  fcatan_rolling_player(void* p)   noexcept { return ENV(p)->s.rolling_player; }
+uint8_t  fcatan_discarding_player(void* p) noexcept { return ENV(p)->s.discarding_player; }
 uint8_t  fcatan_robber_hex(void* p)       noexcept { return ENV(p)->s.robber_hex; }
 uint8_t  fcatan_dice_roll(void* p)        noexcept { return ENV(p)->s.dice_roll; }
 uint16_t fcatan_turn_count(void* p)       noexcept { return ENV(p)->s.turn_count; }
@@ -147,36 +147,6 @@ void fcatan_set_edge(void* p, int edge_id, uint8_t owner) noexcept {
 // Read computed longest-road length (set by check_longest_road).
 uint8_t fcatan_player_road_length(void* p, int pl) noexcept {
     return ENV(p)->s.player_road_length[pl];
-}
-
-// Re-run check_longest_road + check_largest_army on the current state.
-// Useful after test setters mutate node/edge/knight counts directly.
-void fcatan_recompute_awards(void* p) noexcept {
-    auto* e = ENV(p);
-    catan::recompute_awards(e->s);
-    catan::refresh_mask(e->s, e->b);
-}
-
-// Reset using a caller-provided BoardLayout. For differential testing.
-//   hex_resource: 19 bytes (0=brick, 1=lumber, 2=wool, 3=grain, 4=ore, 5=desert)
-//   hex_number:   19 bytes (0 for desert, 2..12 skipping 7 elsewhere)
-//   port_type:    9 bytes (0..4 = 2:1 specific, 5 = 3:1 generic)
-//   port_layout:  0 = pattern A (Catanatron-aligned), 1 = pattern B
-//   seed:         per-env RNG seed
-//   start_player_override: 0..3 to force, 0xFF to randomize
-void fcatan_reset_with_layout(void* p,
-                                const uint8_t* hex_resource,
-                                const uint8_t* hex_number,
-                                const uint8_t* port_type,
-                                uint8_t port_layout,
-                                uint64_t seed,
-                                uint8_t start_player_override) noexcept {
-    auto* e = ENV(p);
-    std::memcpy(e->b.hex_resource, hex_resource, 19);
-    std::memcpy(e->b.hex_number,   hex_number,   19);
-    std::memcpy(e->b.port_type,    port_type,    9);
-    e->b.port_layout = port_layout;
-    catan::reset_with_layout(e->s, e->b, seed, start_player_override);
 }
 
 // --- Mask + state cloning helpers ---
