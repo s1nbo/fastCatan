@@ -30,11 +30,9 @@ namespace catan {
     inline constexpr uint32_t NUM_ACTIONS = 286;
 
     // 5 × uint64 = 320 bits. Bit i corresponds to action ID i.
-    inline constexpr uint32_t MASK_WORDS = 5;
+    inline constexpr uint8_t MASK_WORDS = 5;
 
-    // Recompute the legal-action bitmask from the current state.
-    // M1: full recompute every call. M3 will replace this with an
-    // incrementally maintained version, gated on the same predicate set.
+    // Compute the legal-action bitmask from the current state.
     void compute_mask(const GameState& s, const BoardLayout& b,
                       uint64_t mask[MASK_WORDS]) noexcept;
 
