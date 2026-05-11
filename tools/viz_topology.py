@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import RegularPolygon, Circle
+from matplotlib.patches import RegularPolygon, Circle, Wedge
 
 
 # ---------------------------------------------------------------------
@@ -154,7 +154,7 @@ def draw(out_path: str | None, draw_edges: bool, pattern: str):
             edgecolor="#888", facecolor="#f7e9b0", linewidth=1.2,
         )
         ax.add_patch(hexagon)
-        ax.text(cx, cy + 0.0, f"H{hid}",
+        ax.text(cx, cy + 0.0, f"0x{hid:02X}",
                 ha="center", va="center", fontsize=11,
                 color="#a04000", fontweight="bold")
 
@@ -171,38 +171,43 @@ def draw(out_path: str | None, draw_edges: bool, pattern: str):
             length = math.hypot(dx, dy) or 1.0
             nx, ny = -dy / length, dx / length
             offset = 0.10
-            ax.text(mx + nx * offset, my + ny * offset, f"e{eid}",
+            ax.text(mx + nx * offset, my + ny * offset, f"0x{eid:02X}",
                     ha="center", va="center", fontsize=6.5,
                     color="#1a5e1a", zorder=3)
 
-    # nodes
+    # nodes — color by port-pattern membership
+    PORT_A_NODES = {n for pair in PORT_NODE_A for n in pair}
+    PORT_B_NODES = {n for pair in PORT_NODE_B for n in pair}
+    RED  = "#e74c3c"
+    BLUE = "#3498db"
+    show_A = pattern in ("A", "both")
+    show_B = pattern in ("B", "both")
     for nid, (x, y) in enumerate(nodes):
-        circle = Circle((x, y), 0.13, facecolor="white",
-                        edgecolor="black", linewidth=1.0, zorder=4)
-        ax.add_patch(circle)
-        ax.text(x, y, f"{nid}", ha="center", va="center",
-                fontsize=7.5, color="black", zorder=5)
-
-    # ports
-    def draw_ports(table, color, label_prefix, dy_offset):
-        for pid, (a, b) in enumerate(table):
-            ax_, ay_ = nodes[a]
-            bx_, by_ = nodes[b]
-            mx, my = (ax_ + bx_) / 2.0, (ay_ + by_) / 2.0
-            # marker
-            ax.plot(mx, my + dy_offset, marker="s", markersize=12,
-                    markerfacecolor=color, markeredgecolor="black", zorder=6)
-            ax.text(mx, my + dy_offset, f"{label_prefix}{pid}",
-                    ha="center", va="center", fontsize=7,
-                    color="white", fontweight="bold", zorder=7)
-
-    if pattern in ("A", "both"):
-        draw_ports(PORT_NODE_A, "#c0392b", "A", dy_offset=0.32)
-    if pattern in ("B", "both"):
-        draw_ports(PORT_NODE_B, "#1f4e8c", "B", dy_offset=-0.32)
-
-    title = f"Catan topology — pattern {pattern}"
-    ax.set_title(title, fontsize=14)
+        in_A = show_A and nid in PORT_A_NODES
+        in_B = show_B and nid in PORT_B_NODES
+        r = 0.16
+        if in_A and in_B:
+            ax.add_patch(Wedge((x, y), r,  90, 270, facecolor=RED,
+                               edgecolor="none", linewidth=0, zorder=4))
+            ax.add_patch(Wedge((x, y), r, 270,  90, facecolor=BLUE,
+                               edgecolor="none", linewidth=0, zorder=4))
+            ax.add_patch(Circle((x, y), r, facecolor="none",
+                                edgecolor="black", linewidth=1.0, zorder=4.5))
+            tcolor = "white"
+        elif in_A:
+            ax.add_patch(Circle((x, y), r, facecolor=RED,
+                                edgecolor="black", linewidth=1.0, zorder=4))
+            tcolor = "white"
+        elif in_B:
+            ax.add_patch(Circle((x, y), r, facecolor=BLUE,
+                                edgecolor="black", linewidth=1.0, zorder=4))
+            tcolor = "white"
+        else:
+            ax.add_patch(Circle((x, y), 0.13, facecolor="white",
+                                edgecolor="black", linewidth=1.0, zorder=4))
+            tcolor = "black"
+        ax.text(x, y, f"{nid:02X}", ha="center", va="center",
+                fontsize=7.0, color=tcolor, fontweight="bold", zorder=5)
 
     pad = 1.2
     xs = [p[0] for p in nodes]

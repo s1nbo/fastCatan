@@ -59,7 +59,7 @@ step_   = _b("fcatan_step",    U8,   VP, U32)
 phase           = _b("fcatan_phase",            U8, VP)
 flag            = _b("fcatan_flag",             U8, VP)
 current_player  = _b("fcatan_current_player",   U8, VP)
-rolling_player  = _b("fcatan_rolling_player",   U8, VP)
+discarding_player = _b("fcatan_discarding_player", U8, VP)
 dice_roll       = _b("fcatan_dice_roll",        U8, VP)
 dev_card_played = _b("fcatan_dev_card_played",  U8, VP)
 robber_hex      = _b("fcatan_robber_hex",       U8, VP)
@@ -265,7 +265,7 @@ def test_play_knight_basic():
     fails += fail(p_total_dev(e.h, pl) == total_b - 1, "total_dev not decremented")
     fails += fail(dev_card_played(e.h) == 1, "dev_card_played not set")
     fails += fail(flag(e.h) == FLAG_MOVE_ROBBER, f"flag={flag(e.h)} (want MOVE_ROBBER)")
-    fails += fail(rolling_player(e.h) == pl, "rolling_player not set to knight player")
+    fails += fail(current_player(e.h) == pl, "current_player must stay knight player")
     return fails
 
 

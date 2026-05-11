@@ -96,11 +96,8 @@ Public C++ API:
 
 ```cpp
 void reset_one(GameState&, BoardLayout&, uint64_t seed);
-void reset_with_layout(GameState&, const BoardLayout&, uint64_t seed,
-                       uint8_t start_player_override = 0xFF);
 void step_one(GameState&, const BoardLayout&, uint32_t action,
               float& reward, uint8_t& done);
-void recompute_awards(GameState&);
 void refresh_mask(GameState&, const BoardLayout&);
 ```
 

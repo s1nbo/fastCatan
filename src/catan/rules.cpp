@@ -447,10 +447,7 @@ inline void handle_roll_dice(GameState& s, const BoardLayout& b) noexcept {
     s.dice_roll = uint8_t(d1 + d2);
 
     if (s.dice_roll == 7) {
-        // Snapshot pre-discard state. Each player with >7 cards must
-        // discard floor(handsize/2) cards.
-        s.rolling_player = s.current_player;
-
+        // Each player with >7 cards must discard floor(handsize/2) cards.
         bool anyone_over = false;
         for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
             uint8_t hs = s.player_handsize[p];
@@ -459,11 +456,11 @@ inline void handle_roll_dice(GameState& s, const BoardLayout& b) noexcept {
         }
 
         if (anyone_over) {
-            // Hand control to first discarder, clockwise from rolling player.
+            // Pick first discarder, clockwise from turn owner.
             for (uint8_t i = 0; i < NUM_PLAYERS; ++i) {
-                uint8_t p = uint8_t((s.rolling_player + i) & 0x03);
+                uint8_t p = uint8_t((s.current_player + i) & 0x03);
                 if (s.player_discard_remaining[p] > 0) {
-                    s.current_player = p;
+                    s.discarding_player = p;
                     break;
                 }
             }
@@ -610,7 +607,7 @@ inline void resolve_post_robber(GameState& s) noexcept {
 inline void handle_discard(GameState& s, uint32_t action) noexcept {
     if (action - action::DISCARD_BASE >= NUM_RESOURCES) return;
     uint8_t r  = uint8_t(action - action::DISCARD_BASE);
-    uint8_t pl = s.current_player;
+    uint8_t pl = s.discarding_player;
 
     if (s.player_discard_remaining[pl] == 0)   return;
     if (s.player_resources[pl][r] == 0)        return;  // can't discard what you don't have
@@ -621,16 +618,15 @@ inline void handle_discard(GameState& s, uint32_t action) noexcept {
     s.player_discard_remaining[pl] -= 1;
 
     if (s.player_discard_remaining[pl] == 0) {
-        // Hand off to next discarder clockwise from rolling player.
+        // Hand off to next discarder clockwise from turn owner.
         for (uint8_t i = 1; i <= NUM_PLAYERS; ++i) {
-            uint8_t p = uint8_t((s.rolling_player + i) & 0x03);
+            uint8_t p = uint8_t((s.current_player + i) & 0x03);
             if (s.player_discard_remaining[p] > 0) {
-                s.current_player = p;
+                s.discarding_player = p;
                 return;
             }
         }
-        // All discards done — robber move next, by rolling player.
-        s.current_player = s.rolling_player;
+        // All discards done — robber move next, by turn owner.
         s.flag = Flag::MOVE_ROBBER;
     }
 }
@@ -755,7 +751,6 @@ inline void handle_play_knight(GameState& s) noexcept {
     s.player_total_dev[pl]          -= 1;
     s.player_knights_played[pl]     += 1;
     s.dev_card_played                = true;
-    s.rolling_player                 = pl;
     s.flag                           = Flag::MOVE_ROBBER;
 
     check_largest_army(s);
@@ -1280,43 +1275,7 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
 
 }  // namespace
 
-void recompute_awards(GameState& s) noexcept {
-    check_longest_road(s);
-    check_largest_army(s);
-}
-
 void refresh_mask(GameState& s, const BoardLayout& b) noexcept {
-    refresh_action_mask(s, b);
-}
-
-void reset_with_layout(GameState& s, const BoardLayout& b,
-                        uint64_t seed, uint8_t start_player_override) noexcept {
-    std::memset(&s, 0, sizeof(s));
-    xoshiro_seed(s.rng, seed);
-
-    std::memset(s.edge, NO_PLAYER, sizeof(s.edge));
-    s.robber_hex = find_desert(b);
-
-    s.phase = Phase::INITIAL_PLACEMENT_1;
-    s.flag  = Flag::NONE;
-    s.start_player = (start_player_override < 4)
-        ? start_player_override
-        : uint8_t(s.rng.bounded(4));
-    s.current_player = s.start_player;
-
-    for (uint8_t p = 0; p < 4; ++p) {
-        s.player_settlement_count[p] = 5;
-        s.player_city_count[p]       = 4;
-        s.player_road_count[p]       = 15;
-    }
-
-    s.longest_road_owner = NO_PLAYER;
-    s.largest_army_owner = NO_PLAYER;
-    s.trade_proposer     = NO_PLAYER;
-
-    for (uint8_t r = 0; r < 5; ++r) s.bank[r] = 19;
-    std::memcpy(s.dev_deck, INITIAL_DEV_DECK, sizeof(INITIAL_DEV_DECK));
-
     refresh_action_mask(s, b);
 }
 
@@ -1420,7 +1379,7 @@ static inline void recompute_full(const GameState& s,
     if (s.flag != Flag::NONE) {
         switch (s.flag) {
             case Flag::DISCARD_RESOURCES: {
-                uint8_t pl = s.current_player;
+                uint8_t pl = s.discarding_player;
                 if (s.player_discard_remaining[pl] > 0) {
                     for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
                         if (s.player_resources[pl][r] > 0) {
