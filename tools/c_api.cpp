@@ -51,7 +51,7 @@ uint8_t  fcatan_phase(void* p)            noexcept { return uint8_t(ENV(p)->s.ph
 uint8_t  fcatan_flag(void* p)             noexcept { return uint8_t(ENV(p)->s.flag); }
 uint8_t  fcatan_current_player(void* p)   noexcept { return ENV(p)->s.current_player; }
 uint8_t  fcatan_start_player(void* p)     noexcept { return ENV(p)->s.start_player; }
-uint8_t  fcatan_rolling_player(void* p)   noexcept { return ENV(p)->s.rolling_player; }
+uint8_t  fcatan_discarding_player(void* p) noexcept { return ENV(p)->s.discarding_player; }
 uint8_t  fcatan_robber_hex(void* p)       noexcept { return ENV(p)->s.robber_hex; }
 uint8_t  fcatan_dice_roll(void* p)        noexcept { return ENV(p)->s.dice_roll; }
 uint16_t fcatan_turn_count(void* p)       noexcept { return ENV(p)->s.turn_count; }
@@ -70,7 +70,6 @@ uint8_t fcatan_edge(void* p, int i)       noexcept { return ENV(p)->s.edge[i]; }
 uint8_t fcatan_hex_resource(void* p, int h) noexcept { return ENV(p)->b.hex_resource[h]; }
 uint8_t fcatan_hex_number(void* p, int h)   noexcept { return ENV(p)->b.hex_number[h]; }
 uint8_t fcatan_port_type(void* p, int i)    noexcept { return ENV(p)->b.port_type[i]; }
-uint8_t fcatan_port_layout(void* p)         noexcept { return ENV(p)->b.port_layout; }
 
 // Per-player
 uint8_t fcatan_player_vp(void* p, int pl)         noexcept { return ENV(p)->s.player_vp[pl]; }
@@ -101,7 +100,7 @@ void fcatan_give_resources(void* p, int pl, int r, uint8_t n) noexcept {
     e->s.player_resources[pl][r] += n;
     e->s.player_handsize[pl]     += n;
     e->s.bank[r]                 -= n;
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Force a player's VP (and public VP). For testing end-of-game triggers.
@@ -109,7 +108,7 @@ void fcatan_set_player_vp(void* p, int pl, uint8_t vp) noexcept {
     auto* e = ENV(p);
     e->s.player_vp[pl]              = vp;
     e->s.player_vp_without_dev[pl]  = vp;
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Force a player's playable dev card count. Updates player_total_dev.
@@ -119,14 +118,14 @@ void fcatan_set_player_dev(void* p, int pl, int type, uint8_t n) noexcept {
     uint8_t total = 0;
     for (int d = 0; d < 5; ++d) total += e->s.player_dev[pl][d];
     e->s.player_total_dev[pl] = total;
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Force a player's knights played count (largest-army setup).
 void fcatan_set_player_knights_played(void* p, int pl, uint8_t n) noexcept {
     auto* e = ENV(p);
     e->s.player_knights_played[pl] = n;
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Place an arbitrary node value (level + owner) directly. Test-only —
@@ -134,49 +133,19 @@ void fcatan_set_player_knights_played(void* p, int pl, uint8_t n) noexcept {
 void fcatan_set_node(void* p, int node_id, uint8_t level, uint8_t owner) noexcept {
     auto* e = ENV(p);
     e->s.node[node_id] = catan::node_pack(level, owner);
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Place an edge owner directly. NO_PLAYER (0xFF) clears the edge.
 void fcatan_set_edge(void* p, int edge_id, uint8_t owner) noexcept {
     auto* e = ENV(p);
     e->s.edge[edge_id] = owner;
-    catan::refresh_mask(e->s, e->b);
+    catan::compute_mask(e->s, e->b, e->s.action_mask);
 }
 
 // Read computed longest-road length (set by check_longest_road).
 uint8_t fcatan_player_road_length(void* p, int pl) noexcept {
     return ENV(p)->s.player_road_length[pl];
-}
-
-// Re-run check_longest_road + check_largest_army on the current state.
-// Useful after test setters mutate node/edge/knight counts directly.
-void fcatan_recompute_awards(void* p) noexcept {
-    auto* e = ENV(p);
-    catan::recompute_awards(e->s);
-    catan::refresh_mask(e->s, e->b);
-}
-
-// Reset using a caller-provided BoardLayout. For differential testing.
-//   hex_resource: 19 bytes (0=brick, 1=lumber, 2=wool, 3=grain, 4=ore, 5=desert)
-//   hex_number:   19 bytes (0 for desert, 2..12 skipping 7 elsewhere)
-//   port_type:    9 bytes (0..4 = 2:1 specific, 5 = 3:1 generic)
-//   port_layout:  0 = pattern A (Catanatron-aligned), 1 = pattern B
-//   seed:         per-env RNG seed
-//   start_player_override: 0..3 to force, 0xFF to randomize
-void fcatan_reset_with_layout(void* p,
-                                const uint8_t* hex_resource,
-                                const uint8_t* hex_number,
-                                const uint8_t* port_type,
-                                uint8_t port_layout,
-                                uint64_t seed,
-                                uint8_t start_player_override) noexcept {
-    auto* e = ENV(p);
-    std::memcpy(e->b.hex_resource, hex_resource, 19);
-    std::memcpy(e->b.hex_number,   hex_number,   19);
-    std::memcpy(e->b.port_type,    port_type,    9);
-    e->b.port_layout = port_layout;
-    catan::reset_with_layout(e->s, e->b, seed, start_player_override);
 }
 
 // --- Mask + state cloning helpers ---

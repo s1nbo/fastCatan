@@ -8,28 +8,22 @@
 
 namespace catan {
 
-// Forward decl: full-recompute mask body lives at the bottom of the file
-// (after all sub-phase helpers). Both reset_one and step_one call this
-// to refresh GameState::action_mask after any state mutation.
-namespace { inline void refresh_action_mask(GameState& s, const BoardLayout& b) noexcept; }
-
-// Forward decl for surgical update covering ONLY the trade-compose bit
-// range [268, 296). Used after ADD/REMOVE GIVE/WANT compose actions —
-// those don't touch flag/dice/resources/bank, so other mask bits are
-// unaffected and we can skip the full recompute.
-namespace { inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexcept; }
-
+// Forward decls — definitions live at the bottom of the file, after the sub-phase helpers they depend on. refresh_action_mask does a full
+// recompute using recompute_full; refresh_compose_mask_bits is a update covering only the trade-compose bit range [268, 286), used after ADD GIVE/WANT.
 namespace {
-
+    inline void refresh_action_mask(GameState& s, const BoardLayout& b) noexcept;
+    inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexcept;
+}
+namespace {
 // 19 hex tiles: 3 brick, 4 lumber, 4 wool, 4 grain, 3 ore, 1 desert.
 // Resource codes match BoardLayout::hex_resource semantics in state.hpp.
 constexpr uint8_t HEX_RESOURCE_BAG[19] = {
-    0, 0, 0,
-    1, 1, 1, 1,
-    2, 2, 2, 2,
-    3, 3, 3, 3,
-    4, 4, 4,
-    5,
+    0, 0, 0, // Brick
+    1, 1, 1, 1, // Lumber
+    2, 2, 2, 2, // Wool
+    3, 3, 3, 3, // Grain
+    4, 4, 4, // Ore
+    5, // Desert
 };
 
 // 18 number tokens placed on non-desert hexes. Skips 7 (the robber roll).
@@ -119,8 +113,6 @@ void reset_one(GameState& s, BoardLayout& b, uint64_t seed) noexcept {
     xoshiro_seed(s.rng, seed);
 
     // ----- BoardLayout -----
-    b.port_layout = uint8_t(s.rng.bounded(2));
-
     std::memcpy(b.port_type, PORT_BAG, sizeof(PORT_BAG));
     shuffle(b.port_type, 9, s.rng);
 
@@ -233,13 +225,14 @@ inline bool can_road_initial(const GameState& s, uint8_t edge_id, uint8_t player
 
 inline void grant_port(GameState& s, const BoardLayout& b,
                         uint8_t node_id, uint8_t player) noexcept {
-    const auto& tbl = (b.port_layout == 0)
-        ? topology::node_to_port_A
-        : topology::node_to_port_B;
-    uint8_t slot = tbl[node_id];
-    if (slot == topology::NO_PORT) return;
-    uint8_t ptype = b.port_type[slot];   // 0..4 specific, 5 generic
-    s.player_ports[player] |= uint8_t(1u << ptype);
+    for (uint8_t p = 0; p < topology::NUM_PORTS; ++p) {
+        if (topology::port_to_node[p][0] == node_id
+         || topology::port_to_node[p][1] == node_id) {
+            uint8_t ptype = b.port_type[p];   // 0..4 specific, 5 generic
+            s.player_ports[player] |= uint8_t(1u << ptype);
+            return;
+        }
+    }
 }
 
 // Phase _2 second settlement grants 1 of each adjacent non-desert resource.
@@ -447,10 +440,7 @@ inline void handle_roll_dice(GameState& s, const BoardLayout& b) noexcept {
     s.dice_roll = uint8_t(d1 + d2);
 
     if (s.dice_roll == 7) {
-        // Snapshot pre-discard state. Each player with >7 cards must
-        // discard floor(handsize/2) cards.
-        s.rolling_player = s.current_player;
-
+        // Each player with >7 cards must discard floor(handsize/2) cards.
         bool anyone_over = false;
         for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
             uint8_t hs = s.player_handsize[p];
@@ -459,11 +449,11 @@ inline void handle_roll_dice(GameState& s, const BoardLayout& b) noexcept {
         }
 
         if (anyone_over) {
-            // Hand control to first discarder, clockwise from rolling player.
+            // Pick first discarder, clockwise from turn owner.
             for (uint8_t i = 0; i < NUM_PLAYERS; ++i) {
-                uint8_t p = uint8_t((s.rolling_player + i) & 0x03);
+                uint8_t p = uint8_t((s.current_player + i) & 0x03);
                 if (s.player_discard_remaining[p] > 0) {
-                    s.current_player = p;
+                    s.discarding_player = p;
                     break;
                 }
             }
@@ -610,7 +600,7 @@ inline void resolve_post_robber(GameState& s) noexcept {
 inline void handle_discard(GameState& s, uint32_t action) noexcept {
     if (action - action::DISCARD_BASE >= NUM_RESOURCES) return;
     uint8_t r  = uint8_t(action - action::DISCARD_BASE);
-    uint8_t pl = s.current_player;
+    uint8_t pl = s.discarding_player;
 
     if (s.player_discard_remaining[pl] == 0)   return;
     if (s.player_resources[pl][r] == 0)        return;  // can't discard what you don't have
@@ -621,16 +611,15 @@ inline void handle_discard(GameState& s, uint32_t action) noexcept {
     s.player_discard_remaining[pl] -= 1;
 
     if (s.player_discard_remaining[pl] == 0) {
-        // Hand off to next discarder clockwise from rolling player.
+        // Hand off to next discarder clockwise from turn owner.
         for (uint8_t i = 1; i <= NUM_PLAYERS; ++i) {
-            uint8_t p = uint8_t((s.rolling_player + i) & 0x03);
+            uint8_t p = uint8_t((s.current_player + i) & 0x03);
             if (s.player_discard_remaining[p] > 0) {
-                s.current_player = p;
+                s.discarding_player = p;
                 return;
             }
         }
-        // All discards done — robber move next, by rolling player.
-        s.current_player = s.rolling_player;
+        // All discards done — robber move next, by turn owner.
         s.flag = Flag::MOVE_ROBBER;
     }
 }
@@ -755,7 +744,6 @@ inline void handle_play_knight(GameState& s) noexcept {
     s.player_total_dev[pl]          -= 1;
     s.player_knights_played[pl]     += 1;
     s.dev_card_played                = true;
-    s.rolling_player                 = pl;
     s.flag                           = Flag::MOVE_ROBBER;
 
     check_largest_army(s);
@@ -1027,23 +1015,11 @@ inline void handle_trade_add_give(GameState& s, uint32_t action) noexcept {
     if (s.player_resources[pl][r] <= s.trade_give[r]) return;  // can't give what you don't own
     s.trade_give[r] += 1;
 }
-inline void handle_trade_remove_give(GameState& s, uint32_t action) noexcept {
-    uint32_t r = action - action::TRADE_REMOVE_GIVE_BASE;
-    if (r >= NUM_RESOURCES) return;
-    if (s.trade_give[r] == 0) return;
-    s.trade_give[r] -= 1;
-}
 inline void handle_trade_add_want(GameState& s, uint32_t action) noexcept {
     uint32_t r = action - action::TRADE_ADD_WANT_BASE;
     if (r >= NUM_RESOURCES) return;
     if (s.trade_want[r] >= 19) return;  // cap to bank max
     s.trade_want[r] += 1;
-}
-inline void handle_trade_remove_want(GameState& s, uint32_t action) noexcept {
-    uint32_t r = action - action::TRADE_REMOVE_WANT_BASE;
-    if (r >= NUM_RESOURCES) return;
-    if (s.trade_want[r] == 0) return;
-    s.trade_want[r] -= 1;
 }
 
 // Open the proposal: validate, set TRADE_PENDING flag, hand control to first
@@ -1182,9 +1158,9 @@ inline bool dispatch_dev_play(GameState& s, uint32_t action) noexcept {
     if (action == action::PLAY_KNIGHT)         { handle_play_knight(s); return true; }
     if (action == action::PLAY_ROAD_BUILDING)  { handle_play_road_building(s); return true; }
     if (action >= action::PLAY_YEAR_OF_PLENTY
-        && action <  action::YOP_END)          { handle_play_yop(s, action); return true; }
+        && action <  action::PLAY_MONOPOLY)         { handle_play_yop(s, action); return true; }
     if (action >= action::PLAY_MONOPOLY
-        && action <  action::MONOPOLY_END)     { handle_play_monopoly(s, action); return true; }
+        && action <  action::TRADE_ADD_GIVE_BASE)   { handle_play_monopoly(s, action); return true; }
     return false;
 }
 
@@ -1195,17 +1171,9 @@ inline bool dispatch_trade_compose(GameState& s, uint32_t action) noexcept {
         && action <  action::TRADE_ADD_GIVE_BASE + NUM_RESOURCES) {
         handle_trade_add_give(s, action); return true;
     }
-    if (action >= action::TRADE_REMOVE_GIVE_BASE
-        && action <  action::TRADE_REMOVE_GIVE_BASE + NUM_RESOURCES) {
-        handle_trade_remove_give(s, action); return true;
-    }
     if (action >= action::TRADE_ADD_WANT_BASE
         && action <  action::TRADE_ADD_WANT_BASE + NUM_RESOURCES) {
         handle_trade_add_want(s, action); return true;
-    }
-    if (action >= action::TRADE_REMOVE_WANT_BASE
-        && action <  action::TRADE_REMOVE_WANT_BASE + NUM_RESOURCES) {
-        handle_trade_remove_want(s, action); return true;
     }
     if (action == action::TRADE_OPEN)   { handle_trade_open(s);   return true; }
     if (action == action::TRADE_CANCEL) { handle_trade_cancel(s); return true; }
@@ -1272,53 +1240,13 @@ inline void handle_main(GameState& s, const BoardLayout& b, uint32_t action) noe
     else if (action <  action::CITY_BASE)                                       handle_build_settle(s, b, action);
     else if (action <  action::ROAD_BASE)                                       handle_build_city(s, action);
     else if (action <  action::ROLL_DICE)                                       handle_build_road(s, action);
-    else if (action >= action::TRADE_BASE && action < action::TRADE_END)        handle_trade(s, action);
+    else if (action >= action::TRADE_BASE && action < action::BUY_DEV)          handle_trade(s, action);
     else if (action == action::BUY_DEV)                                         handle_buy_dev(s);
     else if (dispatch_dev_play(s, action))                                      ;  // handled
     else                                                                        dispatch_trade_compose(s, action);
 }
 
 }  // namespace
-
-void recompute_awards(GameState& s) noexcept {
-    check_longest_road(s);
-    check_largest_army(s);
-}
-
-void refresh_mask(GameState& s, const BoardLayout& b) noexcept {
-    refresh_action_mask(s, b);
-}
-
-void reset_with_layout(GameState& s, const BoardLayout& b,
-                        uint64_t seed, uint8_t start_player_override) noexcept {
-    std::memset(&s, 0, sizeof(s));
-    xoshiro_seed(s.rng, seed);
-
-    std::memset(s.edge, NO_PLAYER, sizeof(s.edge));
-    s.robber_hex = find_desert(b);
-
-    s.phase = Phase::INITIAL_PLACEMENT_1;
-    s.flag  = Flag::NONE;
-    s.start_player = (start_player_override < 4)
-        ? start_player_override
-        : uint8_t(s.rng.bounded(4));
-    s.current_player = s.start_player;
-
-    for (uint8_t p = 0; p < 4; ++p) {
-        s.player_settlement_count[p] = 5;
-        s.player_city_count[p]       = 4;
-        s.player_road_count[p]       = 15;
-    }
-
-    s.longest_road_owner = NO_PLAYER;
-    s.largest_army_owner = NO_PLAYER;
-    s.trade_proposer     = NO_PLAYER;
-
-    for (uint8_t r = 0; r < 5; ++r) s.bank[r] = 19;
-    std::memcpy(s.dev_deck, INITIAL_DEV_DECK, sizeof(INITIAL_DEV_DECK));
-
-    refresh_action_mask(s, b);
-}
 
 void step_one(GameState& s, const BoardLayout& b, uint32_t action,
               float& reward, uint8_t& done) noexcept {
@@ -1358,8 +1286,10 @@ void step_one(GameState& s, const BoardLayout& b, uint32_t action,
     }
 
     // Refresh the incremental action_mask field. Surgical fast path for
-    // trade ADD/REMOVE compose actions; full recompute for everything else.
-    if (action >= action::TRADE_ADD_GIVE_BASE && action < action::TRADE_OPEN) {
+    // trade ADD compose actions when state is actually in compose phase;
+    // full recompute otherwise (incl. no-op illegal-action calls).
+    if (action >= action::TRADE_ADD_GIVE_BASE && action < action::TRADE_OPEN
+        && s.phase == Phase::MAIN && s.flag == Flag::NONE && s.dice_roll != 0) {
         refresh_compose_mask_bits(s, b);
     } else {
         refresh_action_mask(s, b);
@@ -1420,7 +1350,7 @@ static inline void recompute_full(const GameState& s,
     if (s.flag != Flag::NONE) {
         switch (s.flag) {
             case Flag::DISCARD_RESOURCES: {
-                uint8_t pl = s.current_player;
+                uint8_t pl = s.discarding_player;
                 if (s.player_discard_remaining[pl] > 0) {
                     for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
                         if (s.player_resources[pl][r] > 0) {
@@ -1569,14 +1499,8 @@ static inline void recompute_full(const GameState& s,
         if (s.player_resources[pl][r] > s.trade_give[r]) {
             set_bit(action::TRADE_ADD_GIVE_BASE + r);
         }
-        if (s.trade_give[r] > 0) {
-            set_bit(action::TRADE_REMOVE_GIVE_BASE + r);
-        }
         if (s.trade_want[r] < 19) {
             set_bit(action::TRADE_ADD_WANT_BASE + r);
-        }
-        if (s.trade_want[r] > 0) {
-            set_bit(action::TRADE_REMOVE_WANT_BASE + r);
         }
     }
     if (trade_scratch_valid(s)) {
@@ -1607,12 +1531,12 @@ inline void refresh_action_mask(GameState& s, const BoardLayout& b) noexcept {
 }
 
 // Surgical updater for trade-compose actions. Only the compose bit range
-// [268, 296) can be affected because ADD/REMOVE GIVE/WANT mutate only
+// [268, 286) can be affected because ADD GIVE/WANT mutate only
 // trade scratch — not flag, dice_roll, phase, resources, or bank.
 inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexcept {
-    // Compose bits all sit in word 4: bit 268 = position 12, bit 295 = position 39.
-    // Range is positions 12..39 inclusive (28 bits).
-    constexpr uint64_t COMPOSE_BIT_RANGE = ((uint64_t(1) << 28) - 1) << 12;
+    // Compose bits all sit in word 4: bit 268 = position 12, bit 285 = position 29.
+    // Range is positions 12..29 inclusive (18 bits).
+    constexpr uint64_t COMPOSE_BIT_RANGE = ((uint64_t(1) << 18) - 1) << 12;
     s.action_mask[4] &= ~COMPOSE_BIT_RANGE;
 
     // Compose bits are only legal when MAIN, post-roll, no flag.
@@ -1629,12 +1553,8 @@ inline void refresh_compose_mask_bits(GameState& s, const BoardLayout& b) noexce
     for (uint8_t r = 0; r < 5; ++r) {
         if (s.player_resources[pl][r] > s.trade_give[r])
             set_bit(action::TRADE_ADD_GIVE_BASE + r);
-        if (s.trade_give[r] > 0)
-            set_bit(action::TRADE_REMOVE_GIVE_BASE + r);
         if (s.trade_want[r] < 19)
             set_bit(action::TRADE_ADD_WANT_BASE + r);
-        if (s.trade_want[r] > 0)
-            set_bit(action::TRADE_REMOVE_WANT_BASE + r);
     }
     // TRADE_OPEN: scratch valid AND proposer holds the give bundle.
     bool give_any = false, want_any = false;
