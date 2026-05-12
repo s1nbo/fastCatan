@@ -596,7 +596,7 @@ inline void resolve_post_robber(GameState& s) noexcept {
         s.flag = Flag::ROBBER_STEAL;
     }
 }
-
+// HERE
 inline void handle_discard(GameState& s, uint32_t action) noexcept {
     if (action - action::DISCARD_BASE >= NUM_RESOURCES) return;
     uint8_t r  = uint8_t(action - action::DISCARD_BASE);
