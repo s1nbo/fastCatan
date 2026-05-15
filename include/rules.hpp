@@ -21,7 +21,7 @@ namespace catan {
         inline constexpr uint32_t DISCARD_BASE     = 182;  // [182, 187) discard 1 of resource r
         inline constexpr uint32_t MOVE_ROBBER_BASE = 187;  // [187, 206) move robber to hex h
         inline constexpr uint32_t STEAL_BASE       = 206;  // [206, 210) steal from player p
-        inline constexpr uint32_t TRADE_BASE       = 210;  // [210, 235) bank/port trade: give*5 + get (e.g. give wood, get brick; give wheat, get brick...)
+        inline constexpr uint32_t TRADE_BASE       = 210;  // [210, 235) bank/port trade: give*4 + get (e.g. give wood, get brick; give wheat, get brick...)
         inline constexpr uint32_t BUY_DEV          = 235;
         inline constexpr uint32_t PLAY_KNIGHT          = 236;
         inline constexpr uint32_t PLAY_ROAD_BUILDING   = 237;
