@@ -596,7 +596,7 @@ inline void resolve_post_robber(GameState& s) noexcept {
         s.flag = Flag::ROBBER_STEAL;
     }
 }
-// HERE
+
 inline void handle_discard(GameState& s, uint32_t action) noexcept {
     if (action - action::DISCARD_BASE >= NUM_RESOURCES) return;
     uint8_t r  = uint8_t(action - action::DISCARD_BASE);
@@ -672,44 +672,35 @@ constexpr uint8_t LARGEST_ARMY_THRESHOLD = 3;
 constexpr uint8_t LARGEST_ARMY_VP        = 2;
 
 // After a knight is played, check whether largest_army_owner changes.
-// Title goes to first player to play `LARGEST_ARMY_THRESHOLD` knights and
-// only transfers when another player STRICTLY exceeds the holder's count.
 inline void check_largest_army(GameState& s) noexcept {
-    uint8_t holder   = s.largest_army_owner;
-    uint8_t holder_n = (holder != NO_PLAYER) ? s.player_knights_played[holder] : 0;
-    uint8_t threshold = (holder == NO_PLAYER) ? LARGEST_ARMY_THRESHOLD
-                                              : uint8_t(holder_n + 1);
+    uint8_t holder = s.largest_army_owner;
+    if (holder == s.current_player) return;  // already largest army
 
-    uint8_t winner   = NO_PLAYER;
-    uint8_t winner_n = uint8_t(threshold - 1);
-    for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
-        uint8_t k = s.player_knights_played[p];
-        if (k >= threshold && k > winner_n) {
-            winner   = p;
-            winner_n = k;
+    uint8_t current_knights = s.player_knights_played[s.current_player];
+    if (current_knights < LARGEST_ARMY_THRESHOLD) return;
+
+    uint8_t threshold = (holder == NO_PLAYER) ? 3 : s.player_knights_played[holder]+1;
+    if (current_knights >= threshold) {
+        if (holder != NO_PLAYER) {
+            s.player_vp[holder] -= LARGEST_ARMY_VP;
+            s.player_vp_without_dev[holder] -= LARGEST_ARMY_VP;   
         }
+        s.player_vp_without_dev[s.current_player] += LARGEST_ARMY_VP;
+        s.player_vp[s.current_player] += LARGEST_ARMY_VP;
+        s.largest_army_owner = s.current_player;
+        check_game_ended(s);
     }
-
-    if (winner == NO_PLAYER || winner == holder) return;
-
-    if (holder != NO_PLAYER) {
-        s.player_vp[holder]              -= LARGEST_ARMY_VP;
-        s.player_vp_without_dev[holder]  -= LARGEST_ARMY_VP;
-    }
-    s.largest_army_owner = winner;
-    s.player_vp[winner]              += LARGEST_ARMY_VP;
-    s.player_vp_without_dev[winner]  += LARGEST_ARMY_VP;
-}
+} 
 
 inline void handle_buy_dev(GameState& s) noexcept {
-    uint8_t pl = s.current_player;
-    if (!can_pay(s, pl, COST_DEV)) return;
+    uint8_t current = s.current_player;
+    if (!can_pay(s, current, COST_DEV)) return;
 
     uint16_t total = 0;
     for (uint8_t d = 0; d < 5; ++d) total += s.dev_deck[d];
     if (total == 0) return;
 
-    pay_to_bank(s, pl, COST_DEV);
+    pay_to_bank(s, current, COST_DEV);
 
     uint32_t pick = s.rng.bounded(total);
     uint32_t cum = 0;
@@ -720,29 +711,29 @@ inline void handle_buy_dev(GameState& s) noexcept {
     }
 
     s.dev_deck[card] -= 1;
-    s.player_total_dev[pl] += 1;
+    s.player_total_dev[current] += 1;
 
     if (card == DEV_VP) {
         // VP cards skip the cooldown (always counted, even on buy turn).
-        s.player_dev[pl][card] += 1;
-        s.player_vp[pl]        += 1;
+        s.player_dev[current][card] += 1;
+        s.player_vp[current]        += 1;
         // public VP does NOT change — VP cards stay hidden until win reveal.
         check_game_ended(s);
     } else {
-        s.player_dev_bought_this_turn[pl][card] += 1;
+        s.player_dev_bought_this_turn[current][card] += 1;
     }
 }
 
 inline void handle_play_knight(GameState& s) noexcept {
-    if (s.flag != Flag::NONE) return;     // not during a sub-phase
+    if (s.flag != Flag::NONE) return;     // not during a sub-phase, is also checked by handle_main
     if (s.dev_card_played)    return;     // one dev card per turn
 
-    uint8_t pl = s.current_player;
-    if (s.player_dev[pl][DEV_KNIGHT] == 0) return;
+    uint8_t current = s.current_player;
+    if (s.player_dev[current][DEV_KNIGHT] == 0) return;
 
-    s.player_dev[pl][DEV_KNIGHT]    -= 1;
-    s.player_total_dev[pl]          -= 1;
-    s.player_knights_played[pl]     += 1;
+    s.player_dev[current][DEV_KNIGHT]    -= 1;
+    s.player_total_dev[current]          -= 1;
+    s.player_knights_played[current]     += 1;
     s.dev_card_played                = true;
     s.flag                           = Flag::MOVE_ROBBER;
 
