@@ -44,12 +44,6 @@ else()
     message(STATUS "OpenMP not found — building single-threaded")
 endif()
 
-# ctypes shared lib (used by Python tests).
-add_library(fastcatan SHARED tools/c_api.cpp)
-target_link_libraries(fastcatan PRIVATE fastcatan_core)
-target_compile_options(fastcatan PRIVATE
-    $<$<CONFIG:Release>:${FCATAN_RELEASE_FLAGS}>)
-
 # --------------------------------------------------------------------
 # Python extension via nanobind (built when invoked through scikit-build-core).
 # --------------------------------------------------------------------
@@ -70,11 +64,6 @@ if(SKBUILD)
 
     install(TARGETS _fastcatan LIBRARY DESTINATION fastcatan)
     install(FILES python/fastcatan/__init__.py
-                  python/fastcatan/gym_env.py
-                  python/fastcatan/pettingzoo_env.py
-                  python/fastcatan/tournament.py
-                  python/fastcatan/alphabeta.py
-                  python/fastcatan/selfplay.py
             DESTINATION fastcatan)
 endif()
 
@@ -106,13 +95,3 @@ if(NOT SKBUILD)
         endif()
     endif()
 endif()
-
-# Throughput benchmarks.
-add_executable(bench_step    bench/bench_step.cpp)
-add_executable(bench_batched bench/bench_batched.cpp)
-target_link_libraries(bench_step    PRIVATE fastcatan_core)
-target_link_libraries(bench_batched PRIVATE fastcatan_core)
-foreach(bench_target bench_step bench_batched)
-    target_compile_options(${bench_target} PRIVATE
-        $<$<CONFIG:Release>:${FCATAN_RELEASE_FLAGS}>)
-endforeach()

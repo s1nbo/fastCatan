@@ -203,33 +203,3 @@ pyproject.toml           scikit-build-core editable install
 PLAN.md                  thesis plan + milestone tracking
 HPC.md                   HPC build + SLURM setup
 ```
-
-## Tests
-
-16 test suites covering rules, mask consistency, observation encoding,
-batched env, longest-road corpus, PvP trade, perft determinism, and the
-nanobind / Gym / PettingZoo wrappers.
-
-```bash
-for t in tools/test_*.py; do echo "=== $t ==="; python3 "$t" 2>&1 | tail -1; done
-```
-
-## Status
-
-- ✅ All Catan rules implemented (initial placement → end game)
-- ✅ Largest army + longest road with strict-exceed transfer rules
-- ✅ All 5 dev cards (knight, VP, road-building, year-of-plenty, monopoly)
-- ✅ Player-to-player trading (compose → respond → confirm)
-- ✅ Batched env + auto-reset + OpenMP-ready
-- ✅ Gymnasium + PettingZoo wrappers
-- ✅ MaskablePPO training pipeline
-- ✅ HPC build setup
-- ✅ Tournament harness (`fc.play(a, b, n_games)` with Wilson 95% CIs)
-- ✅ Alpha-Beta baseline (depth-limited minimax with multi-feature heuristic, ~75% vs random at depth 2)
-- ✅ Self-play wrappers (`policy_from_sb3`, `FrozenSelfPlayOpponent`)
-
-See [`PLAN.md`](PLAN.md) for the full milestone roadmap.
-
-## License
-
-MIT — see [`LICENSE`](LICENSE).
