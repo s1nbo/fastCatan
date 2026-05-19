@@ -167,61 +167,49 @@ For trading-net training (thesis M3+): a PettingZoo AEC wrapper yields control t
 
 ### Correctness
 
-Three-pillar strategy, ordered by ROI:
+TODO
 
-1. **Property/invariant fuzz.** Run 10⁷ random games, assert after every step: `sum(resources_in_play) + sum(bank) == 95`; `sum(dev_deck) + sum(held) + sum(played_knights) == 25`; `vp_public[i] + vp_hidden[i] ≤ 12`; settlement distance-rule; road connectivity; mask nonempty unless terminal. `assert()` macros — on in debug/CI, off in release.
-2. **Perft-style determinism.** Fixed seed + fixed random policy hash → 100k steps → hash of final state. Committed. Any refactor that changes the hash breaks CI.
-3. **Unit tests.** ~50 handwritten rule corner cases (longest-road ties, road-cut-by-settlement, largest-army transfers, port 2:1 without resources, trade offered to player at 7-card limit, YoP with empty bank, etc.).
+## Milestones
 
-## Milestones (aligned with the thesis's 5 × 4-week blocks)
+### M0 — Foundations (DONE)
 
-Principle: **RL work is unblocked by end of M1**; every later milestone is additive.
+- C++23 simulator + nanobind bindings; Linux-x86_64 CI.
+- Full rules: building, dev cards, robber, bank/port + player-to-player trading.
+- Gymnasium 4-player env (single-agent wrapper) + PettingZoo AEC.
+- Incremental legal-action mask (296 used / 320 bits); surgical trade updater.
 
-### M1 — Weeks 1–4 (May 2026): Usable Vertical Slice
+### M1 — Baselines
 
-- CMake + nanobind + pyproject skeleton; Linux-x86_64 CI. `CMAKE_CXX_STANDARD 23`, `CMAKE_CXX_STANDARD_REQUIRED ON`, `CMAKE_CXX_EXTENSIONS OFF`. Pin GCC ≥14 in CI. Document HPC compiler version in README.
-- `topology.hpp` codegen, standard 19-hex board only.
-- `GameState`, `reset_one`, `step_one`, `write_obs`. No incremental mask — recompute legality on demand.
-- Rules: initial placement, rolling, all building, buy-dev, play-knight + robber, bank/port trading. **Other dev cards and player-to-player trading deferred to M2** (scope cut to hit date).
-- Single-env Gymnasium wrapper.
-- First throughput benchmark.
-- **Target: 5×10⁵ steps/sec.** RL researcher can start PPO vs random opponent on a crippled-but-correct Catan.
+- Random baseline (Python).
+- Alpha-Beta baseline (Python): depth-limited minimax + multi-feature heuristic.
+- Game-log capture for both Python baselines (action stream, board state, seed).
+- Random baseline (C++).
+- Alpha-Beta baseline (C++).
+- Parity test: C++ vs Python baselines on shared seed-replay corpus (state/action equivalence + steps/sec comparison).
+- Parity test: C++ baseline vs Catanatron on shared seed-replay corpus (rule equivalence).
+- Throughput + log dashboard: steps/sec, episode length distribution, win rates per seat.
+- **Gate: C++ baselines match Python and Catanatron on log replay (zero divergence) and beat Python throughput by ≥100×.**
 
-### M2 — Weeks 5–8 (June): Full Rules + Batching
+### M2 — Initial RL Agent
 
-- All dev cards (Year-of-Plenty, Road-Builder, Monopoly). VP dev-card hidden count.
-- Longest-road algorithm in `src/catan/longest_road.cpp` with its own test corpus of hand-built positions with known-correct lengths.
-- Player-to-player trading as a sub-phase (compositional encoding).
-- `BatchedEnv` with OpenMP parallel-for.
-- DLPack zero-copy obs/mask/reward/done tensors via nanobind.
-- Fuzzer passes 10⁷ random games with zero invariant violations.
-- **Target: 5×10⁶ steps/sec ("millions of steps/sec" threshold hit).**
+- MaskablePPO training pipeline driven by `BatchedEnv` (`tools/train_smoke.py` hardened).
+- Lock observation encoder + reward shaping.
+- Train first model vs random opponents.
+- **Gate: >90% win rate vs random baseline over 1000 four-player games.**
 
-### M3 — Weeks 9–12 (July): Incremental Mask + Correctness Lockdown
+### M3 — Self-Play Training
 
-- Incremental legal-action mask. Debug builds assert `incremental == recomputed` every step.
-- PettingZoo AEC wrapper (needed for trading-net training).
-- Perft-style determinism test pinned in CI.
-- PGO pipeline set up.
-- CI regression detection: throughput must not drop >5% between commits.
-- **Target: 2×10⁷ steps/sec.**
+- Iterative self-play schedule (frozen snapshot rotation cadence).
+- Hyperparam sweep over learning rate, entropy, snapshot interval.
+- **Gate: latest model beats N-step-ago snapshot >55%.**
 
-### M4 — Weeks 13–20 (Aug–Sept): Performance Endgame
+### M4 — Alpha-Beta Eval + Final Model
 
-- SIMD batch-mask computation where profiling shows wins (AVX2/AVX-512 for batched affordability checks).
-- NUMA-aware multi-process sharding via `torch.multiprocessing`.
-- Final PGO + LTO build.
-- `perf stat` audit of L1/L2/LLC miss rates; `perf record` for hot functions.
-- Observation encoder microbench — at 5×10⁷ steps/sec, writing obs may need SIMD scatter.
-- Turn off debug assertions for final runs.
-- **Target: 5×10⁷ steps/sec.** This is the long-run training regime for thesis results.
-
-### M5 — Weeks 21–26 (Oct–Nov): Harden for Final Evaluation
-
-- Freeze `step_one` semantics. No more API changes.
-- 10⁸-step soak test — no crashes, no leaks, no accumulation drift.
-- Tournament harness: `play(agent_a, agent_b, n_games) -> (win_rate, confidence_interval)`. This is what validates the "beat AlphaBeta over ≥1000 games" claim.
-- Reproducibility doc: exact CMake args, compiler version, glibc, seed schedule.
+- Tournament harness `play(agent_a, agent_b, n_games) -> (win_rate, 95% CI)`.
+- Final model vs Alpha-Beta over ≥1000 four-player games.
+- 10⁸-step soak test for stability.
+- Reproducibility doc: CMake args, GCC version, glibc, seed schedule, training config.
+- **Thesis gate: >25% win rate vs Alpha-Beta with 95% CI.**
 
 ## Top 3 Risks
 
@@ -235,7 +223,7 @@ Road length on a graph with opponent-cuts is hamiltonian-path-ish. Getting it wr
 
 A stale mask bit lets the agent pick an illegal action; the sim either crashes or silently executes it. Training data corrupts invisibly.
 
-**Mitigation.** Debug builds `assert(incremental == recomputed)` after every `step_one`. Keep on through M4; only turn off for the final thesis runs. ~2× debug slowdown is cheap insurance. Seed-reproducible fuzz tests surface drift before it reaches real training.
+**Mitigation.** Debug builds `assert(incremental == recomputed)` after every `step_one`. Keep on through M3 self-play; only turn off for the M4 final thesis runs. ~2× debug slowdown is cheap insurance. Seed-reproducible fuzz tests surface drift before it reaches real training.
 
 ### Risk 3: Python↔C++ boundary dominates step time at high N
 
