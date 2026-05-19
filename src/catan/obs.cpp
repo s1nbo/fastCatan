@@ -148,7 +148,7 @@ void write_obs(const GameState& s, const BoardLayout& b,
     // trade_proposer: 5 slots [self, +1, +2, +3, none]
     if (s.trade_proposer == NO_PLAYER) w.onehot(4, 5);
     else                                w.onehot(int(relseat(self, s.trade_proposer)), 5);
-
+    // trade_give and trade_want: 5 resource counts each
     for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_give[r]));
     for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_want[r]));
 
