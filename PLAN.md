@@ -4,9 +4,9 @@
 
 Author is writing on RL for 4-player Settlers of Catan. Thesis goal: an RL agent that beats Alpha-Beta with statistical significance (>25% win rate over ≥1000 four-player games). The bottleneck the thesis explicitly calls out is simulator throughput — existing Python sim (Catanatron) can't generate self-play at the volume modern RL needs.
 
-This plan designs `fastCatan`: a greenfield C++20 simulator with nanobind Python bindings, Gymnasium interface, targeting **5×10⁷ steps/sec/node** by milestone 4, with full 4-player rules including player-to-player trading intact. Correctness is enforced by invariant fuzzing, hand-built rule unit tests, and perft-style determinism hashes.
+This plan designs `fastCatan`: a greenfield C++23 simulator with nanobind Python bindings, Gymnasium interface, targeting **5×10⁷ steps/sec/node** to make M3 self-play feasible, with full 4-player rules including player-to-player trading intact. Correctness is enforced by invariant fuzzing, hand-built rule unit tests, and perft-style determinism hashes.
 
-Decisions confirmed by user: greenfield C++, Linux HPC only, full trading from M2.
+Decisions confirmed by user: greenfield C++, Linux HPC only, full trading from M0 foundations.
 
 ## Architecture Summary
 
@@ -20,7 +20,7 @@ Decisions confirmed by user: greenfield C++, Linux HPC only, full trading from M
 | RNG | xoshiro128+, per-env, 16 B state | 0.5 ns/call, BigCrush-clean, reproducible |
 | Parallelism | Single-process `BatchedEnv` + OpenMP parallel-for, auto-reset; multi-process across NUMA | Amortizes OMP launch across thousands of envs; auto-reset kills the slow-env-stalls-batch bug |
 | Tensor handoff | DLPack zero-copy via `nanobind::ndarray` | No memcpy per step; PyTorch views same C++ buffer |
-| Gym API | Single-agent Gymnasium + perspective flip for self-play; PettingZoo AEC added in M3 | 99% of RL libs target Gym; AEC wrapper needed only for trading-net training |
+| Gym API | Single-agent Gymnasium + perspective flip for self-play; PettingZoo AEC (done in M0) | 99% of RL libs target Gym; AEC wrapper needed only for trading-net training |
 | Build | CMake 3.27+ with scikit-build-core; GoogleTest + Google Benchmark via FetchContent | One build system; `pip install -e .` works for dev |
 | Platform | Linux x86_64 only; `-std=c++23 -O3 -march=native -flto -fno-exceptions -fno-rtti`, PGO in final mile. Toolchain: GCC 14.2 (Debian) confirmed on dev + HPC frontend. | HPC target; skip macOS/Windows CI complexity |
 
@@ -163,7 +163,7 @@ Every state mutation updates affected mask bits (typically <10 bit flips). `step
 
 Single-agent API returns obs from the perspective of whichever player is currently to-move. The env internally calls `opponent_fn(obs) -> action` for the 3 frozen opponents until control returns to the learner. `info["current_player_id"]` is always populated.
 
-For trading-net training (thesis M3+): a PettingZoo AEC wrapper yields control to Python for every player's every decision. Same C++ core, different Python surface.
+For trading-net training (M3 self-play+): a PettingZoo AEC wrapper yields control to Python for every player's every decision. Same C++ core, different Python surface.
 
 ### Correctness
 
@@ -229,18 +229,18 @@ A stale mask bit lets the agent pick an illegal action; the sim either crashes o
 
 At 5×10⁷ steps/sec with N=4096 envs, a `step()` call is ~80 µs of native work; nanobind dispatch + tensor lifecycle is ~5–20 µs. 6–25% overhead is tolerable but invisible in C++ microbenches.
 
-**Mitigation.** Benchmark from Python from M1, not just from C++. Release GIL in `step()`. Same tensors reused across calls, zero per-step Python work. If still binding at M4, ship the `step_n(num_steps, policy_fn)` C-callable escape hatch for benchmarks and frozen-opponent rollouts.
+**Mitigation.** Benchmark from Python from M1 baselines, not just from C++. Release GIL in `step()`. Same tensors reused across calls, zero per-step Python work. If still binding at M3 self-play, ship the `step_n(num_steps, policy_fn)` C-callable escape hatch for benchmarks and frozen-opponent rollouts.
 
-## Critical Files to Create (in order)
+## Critical Files (M0 build order, retained for reference)
 
 1. `CMakeLists.txt`, `pyproject.toml` — scaffold
 2. `src/catan/topology_gen.py` + `include/catan/topology.hpp` — board constants
 3. `include/catan/rng.hpp`, `include/catan/state.hpp` — core types
 4. `include/catan/rules.hpp` + `src/catan/rules.cpp` — step_one, reset_one
 5. `src/catan/longest_road.cpp` — isolated, test-first
-6. `include/catan/mask.hpp` + `src/catan/mask.cpp` — legal-action mask (recompute version first, incremental in M3)
+6. `include/catan/mask.hpp` + `src/catan/mask.cpp` — incremental legal-action mask
 7. `src/catan/obs.cpp` — observation tensor
-8. `include/catan/batched_env.hpp` + `src/catan/batched_env.cpp` — batched stepping (M2)
+8. `include/catan/batched_env.hpp` + `src/catan/batched_env.cpp` — batched stepping
 9. `bindings/pycatan/bindings.cpp` — nanobind exposure
 10. `python/fastcatan/gym_env.py` — single-agent wrapper
 11. `bench/bench_step.cpp` + `python/fastcatan/benchmarks/throughput.py` — benchmarks
@@ -251,4 +251,4 @@ At 5×10⁷ steps/sec with N=4096 envs, a `step()` call is ~80 µs of native wor
 - **Determinism:** `ctest -R perft` runs fixed-seed/fixed-policy 100k-step trajectory, compares hash to the committed value.
 - **Throughput:** `python -m fastcatan.benchmarks.throughput --n-envs 4096 --steps 100000 --warmup 1000` reports steps/sec. Run 3× under `numactl --cpubind=0 --membind=0`; take median. Gate on per-milestone target.
 - **RL smoke test (M2 onward):** `python scripts/ppo_smoke.py` — 1M-step PPO run vs random opponent, must reach >90% win rate.
-- **Final (M5):** `python scripts/tournament.py --agent-a ppo_final --agent-b alphabeta --n-games 1000` reports win rate + 95% CI.
+- **Final (M4):** `python scripts/tournament.py --agent-a ppo_final --agent-b alphabeta --n-games 1000` reports win rate + 95% CI.

@@ -1,5 +1,6 @@
 import argparse
 import random
+import time
 import numpy as np
 
 import fastcatan
@@ -65,19 +66,20 @@ def main() -> None:
     no_winner = 0
     total_steps = 0
 
+    t0 = time.perf_counter()
     for g in range(args.games):
         winner, vps, steps = play_one(args.seed + g, args.max_steps, args.verbose)
         total_steps += steps
         if winner < 0:
             no_winner += 1
-            print(f"game {g}: NO WINNER after {steps} steps  vps={vps}")
         else:
             win_counts[winner] += 1
-            print(f"game {g}: winner={winner}  vps={vps}  steps={steps}")
+    elapsed = time.perf_counter() - t0
 
-    print()
     print(f"wins per seat: {win_counts}  no-winner: {no_winner}")
     print(f"avg steps/game: {total_steps / args.games:.1f}")
+    print(f"total time: {elapsed:.2f}s  ({args.games / elapsed:.1f} games/s, "
+          f"{total_steps / elapsed:.0f} steps/s)")
 
 
 if __name__ == "__main__":
