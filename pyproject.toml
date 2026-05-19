@@ -26,3 +26,6 @@ cmake.source-dir = "."
 
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_TYPE = "Release"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

@@ -122,23 +122,12 @@ for _h, _nodes in enumerate(FAST_HEX_TO_NODE_RAW):
 FAST_NODE_TO_HEX = [frozenset(s) for s in _tmp_node_hex]
 
 # ---------------------------------------------------------------------------
-# Hex mapping: fastcatan hex ID -> catanatron cube coord.
-# Derived from row-major (top-to-bottom, left-to-right) inspection of
-# catanatron's land tiles, grouped by y, sorted by x. See plan file.
+# Hex/node mappings: derived from the networkx-solved isomorphism below.
+# The isomorphism is the unique mapping that (a) is structurally valid
+# between fastcatan's bipartite hex-node graph and catanatron's land-only
+# equivalent and (b) aligns the 9 fastcatan port edges onto the 9
+# catanatron port edges.
 # ---------------------------------------------------------------------------
-
-FAST_HEX_TO_COORD: list[tuple[int, int, int]] = [
-    (-2,  2,  0), (-1,  2, -1), ( 0,  2, -2),
-    (-2,  1,  1), (-1,  1,  0), ( 0,  1, -1), ( 1,  1, -2),
-    (-2,  0,  2), (-1,  0,  1), ( 0,  0,  0), ( 1,  0, -1), ( 2,  0, -2),
-    (-1, -1,  2), ( 0, -1,  1), ( 1, -1,  0), ( 2, -1, -1),
-    ( 0, -2,  2), ( 1, -2,  1), ( 2, -2,  0),
-]
-assert len(FAST_HEX_TO_COORD) == NUM_HEXES
-
-COORD_TO_FAST_HEX: dict[tuple[int, int, int], int] = {
-    c: i for i, c in enumerate(FAST_HEX_TO_COORD)
-}
 
 # ---------------------------------------------------------------------------
 # Module-load solver: node + edge mappings via hexagon cycle alignment.
@@ -146,115 +135,79 @@ COORD_TO_FAST_HEX: dict[tuple[int, int, int], int] = {
 
 
 def _build_node_edge_mapping():
-    """Solve fastcatan node IDs <-> catanatron node IDs by aligning the
-    hexagon cycle of each tile, anchored at the center hex with brute-force
-    rotation+reflection.
+    """Find the node-ID isomorphism between fastcatan and catanatron's
+    land-only board graphs via networkx VF2.
+
+    Both graphs are bipartite (54 land nodes + 19 land hexes); edges are
+    land-edge node-pairs plus node-hex incidence. networkx enumerates
+    isomorphisms; we iterate until we find one whose mapping aligns
+    fastcatan's 9 port edges onto catanatron's 9 port edges. That
+    constraint pins the canonical absolute orientation.
     """
+    import networkx as nx
+    from networkx.algorithms.isomorphism import GraphMatcher
+
     from catanatron import Color
     from catanatron.game import Game
-    from catanatron.models.enums import NodeRef
+    from catanatron.models.enums import EdgeRef
     from catanatron.models.player import RandomPlayer
+    from catanatron.models.tiles import LandTile, Port
+
+    GF = nx.Graph()
+    for n in range(NUM_NODES):
+        GF.add_node(("n", n), kind="node")
+    for h in range(NUM_HEXES):
+        GF.add_node(("h", h), kind="hex")
+    for a, b in FAST_EDGE_TO_NODE:
+        GF.add_edge(("n", a), ("n", b))
+    for h, nodes in enumerate(FAST_HEX_TO_NODE_RAW):
+        for n in nodes:
+            GF.add_edge(("n", n), ("h", h))
 
     g = Game([RandomPlayer(c) for c in Color])
     m = g.state.board.map
 
-    # catanatron NodeRef cycle in same orientation as fastcatan TL,TM,TR,BR,BM,BL
-    # (counter-clockwise starting from top-left). NodeRef enum order on a
-    # pointy-top hex: NORTH, NORTHEAST, SOUTHEAST, SOUTH, SOUTHWEST, NORTHWEST.
-    # Our fastcatan cycle goes TL -> TM -> TR -> BR -> BM -> BL. We don't yet
-    # know which catanatron NodeRef corresponds to fastcatan's TL, so we try
-    # all 12 orientations (6 rotations * 2 mirror) and pick the one that
-    # produces a globally consistent mapping.
-    nref_cycle = [NodeRef.NORTH, NodeRef.NORTHEAST, NodeRef.SOUTHEAST,
-                  NodeRef.SOUTH, NodeRef.SOUTHWEST, NodeRef.NORTHWEST]
+    cat_land_tiles = [(c, t) for c, t in m.tiles.items() if isinstance(t, LandTile)]
+    cat_land_nodes: set[int] = set()
+    for _, tile in cat_land_tiles:
+        cat_land_nodes.update(tile.nodes.values())
+    cat_land_edges: set[tuple[int, int]] = set()
+    for _, tile in cat_land_tiles:
+        for e in tile.edges.values():
+            cat_land_edges.add(tuple(sorted(e)))
 
-    def cat_cycle_nodes(coord: tuple, start_idx: int, reverse: bool) -> list[int]:
-        tile = m.tiles[coord]
-        idxs = [(start_idx + i) % 6 for i in range(6)]
-        if reverse:
-            idxs = list(reversed(idxs))
-        return [tile.nodes[nref_cycle[i]] for i in idxs]
+    GC = nx.Graph()
+    for n in cat_land_nodes:
+        GC.add_node(("n", n), kind="node")
+    for coord, _ in cat_land_tiles:
+        GC.add_node(("h", coord), kind="hex")
+    for a, b in cat_land_edges:
+        GC.add_edge(("n", a), ("n", b))
+    for coord, tile in cat_land_tiles:
+        for nid in tile.nodes.values():
+            GC.add_edge(("n", nid), ("h", coord))
 
-    center_coord = (0, 0, 0)
-    fast_center_hex = 9
-    fast_center_cycle = FAST_HEX_TO_NODE_CYCLE[fast_center_hex]
+    cat_port_edges: set[frozenset[int]] = set()
+    for coord, tile in m.tiles.items():
+        if isinstance(tile, Port):
+            edge = tile.edges[EdgeRef[tile.direction.name]]
+            cat_port_edges.add(frozenset(edge))
 
-    for start in range(6):
-        for reverse in (False, True):
-            cat_cycle = cat_cycle_nodes(center_coord, start, reverse)
-            node_f2c: dict[int, int] = dict(zip(fast_center_cycle, cat_cycle))
-            processed_hexes: set[int] = {fast_center_hex}
-            ok = True
+    matcher = GraphMatcher(GF, GC, node_match=lambda a, b: a["kind"] == b["kind"])
 
-            # Fixed-point propagation: repeatedly scan unprocessed hexes,
-            # processing any that share a vertex with already-processed ones.
-            while True:
-                made_progress = False
-                for fast_h, cat_coord in enumerate(FAST_HEX_TO_COORD):
-                    if fast_h in processed_hexes:
-                        continue
-                    fast_cycle = FAST_HEX_TO_NODE_CYCLE[fast_h]
-                    seed = None
-                    for i, fn in enumerate(fast_cycle):
-                        if fn in node_f2c:
-                            seed = (i, node_f2c[fn])
-                            break
-                    if seed is None:
-                        continue
-
-                    tile = m.tiles[cat_coord]
-                    cat_id_at_pos = {tile.nodes[nref_cycle[i]]: i for i in range(6)}
-                    if seed[1] not in cat_id_at_pos:
-                        ok = False
-                        break
-                    cat_pos = cat_id_at_pos[seed[1]]
-                    fast_pos = seed[0]
-
-                    aligned = False
-                    for try_reverse in (False, True):
-                        candidate = {}
-                        for off in range(6):
-                            fp = (fast_pos + off) % 6
-                            cp = (cat_pos - off) % 6 if try_reverse else (cat_pos + off) % 6
-                            fn = fast_cycle[fp]
-                            cn = tile.nodes[nref_cycle[cp]]
-                            candidate[fn] = cn
-                        if all(node_f2c.get(fn, cn) == cn for fn, cn in candidate.items()):
-                            node_f2c.update(candidate)
-                            processed_hexes.add(fast_h)
-                            made_progress = True
-                            aligned = True
-                            break
-                    if not aligned:
-                        ok = False
-                        break
-                if not ok or not made_progress:
-                    break
-
-            if not ok or len(processed_hexes) != NUM_HEXES or len(node_f2c) != NUM_NODES:
-                continue
-
-            # Validate: every fastcatan node's hex signature should match
-            # the catanatron node's hex coord signature.
-            valid = True
-            for fn in range(NUM_NODES):
-                cn = node_f2c[fn]
-                fast_hex_set = set(FAST_HEX_TO_COORD[h] for h in FAST_NODE_TO_HEX[fn])
-                cat_hex_set = set()
-                for coord, tile in m.tiles.items():
-                    from catanatron.models.tiles import LandTile
-                    if not isinstance(tile, LandTile):
-                        continue
-                    if cn in tile.nodes.values():
-                        cat_hex_set.add(coord)
-                if fast_hex_set != cat_hex_set:
-                    valid = False
-                    break
-            if valid:
-                return node_f2c
+    for iso in matcher.isomorphisms_iter():
+        node_map = {k[1]: v[1] for k, v in iso.items() if k[0] == "n"}
+        hex_map = {k[1]: v[1] for k, v in iso.items() if k[0] == "h"}
+        # Port-edge alignment check.
+        fast_port_edges_mapped = set()
+        for a, b in FAST_PORT_TO_NODE:
+            fast_port_edges_mapped.add(frozenset({node_map[a], node_map[b]}))
+        if fast_port_edges_mapped == cat_port_edges:
+            return node_map, hex_map
 
     raise RuntimeError(
-        "could not solve node ID isomorphism between fastcatan and catanatron"
+        "no fastcatan<->catanatron isomorphism aligns the 9 port edges; "
+        "their standard board layouts may differ"
     )
 
 
@@ -278,7 +231,69 @@ def _build_edge_mapping(node_f2c: dict[int, int]) -> tuple[
     return fast_to_tuple, tuple_to_fast
 
 
-_node_f2c = _build_node_edge_mapping()
+# fastcatan port_to_node (from include/topology.hpp lines 487-499). Defined
+# before the node-edge solver because the port-edge constraint pins the
+# canonical absolute orientation.
+FAST_PORT_TO_NODE: list[tuple[int, int]] = [
+    (0x00, 0x01), (0x03, 0x04), (0x0E, 0x0F), (0x1A, 0x25), (0x2D, 0x2E),
+    (0x32, 0x33), (0x2F, 0x30), (0x1C, 0x26), (0x07, 0x11),
+]
+NUM_PORTS = 9
+
+
+_node_f2c, _hex_f2c = _build_node_edge_mapping()
 NODE_FAST_TO_CAT = [_node_f2c[i] for i in range(NUM_NODES)]
 NODE_CAT_TO_FAST = {c: f for f, c in _node_f2c.items()}
 EDGE_FAST_TO_TUPLE, EDGE_TUPLE_TO_FAST = _build_edge_mapping(_node_f2c)
+
+FAST_HEX_TO_COORD: list[tuple[int, int, int]] = [_hex_f2c[i] for i in range(NUM_HEXES)]
+COORD_TO_FAST_HEX: dict[tuple[int, int, int], int] = {
+    c: i for i, c in enumerate(FAST_HEX_TO_COORD)
+}
+
+
+def _build_port_mapping() -> list[tuple[int, int, int]]:
+    """For each fastcatan port slot, find the Catanatron Port tile coord
+    whose direction-edge endpoints match fastcatan's port_to_node entry.
+
+    A Catanatron Port tile's `direction` attribute names the EdgeRef that
+    is the actual port (trading) edge — that's the one shared with the
+    adjacent land tile in the trading sense. (A port hex can have
+    additional land-adjacent edges at its corners, but only the direction
+    edge counts as "the port".)
+    """
+    from catanatron import Color
+    from catanatron.game import Game
+    from catanatron.models.enums import EdgeRef
+    from catanatron.models.player import RandomPlayer
+    from catanatron.models.tiles import Port
+
+    g = Game([RandomPlayer(c) for c in Color])
+    m = g.state.board.map
+
+    port_info: list[tuple[tuple, frozenset[int]]] = []
+    for coord, tile in m.tiles.items():
+        if isinstance(tile, Port):
+            edge = tile.edges[EdgeRef[tile.direction.name]]
+            port_info.append((coord, frozenset(edge)))
+
+    result: list[tuple[int, int, int]] = []
+    for fast_port_idx, (fa, fb) in enumerate(FAST_PORT_TO_NODE):
+        cat_a = NODE_FAST_TO_CAT[fa]
+        cat_b = NODE_FAST_TO_CAT[fb]
+        target = frozenset({cat_a, cat_b})
+        match = None
+        for coord, edge_nodes in port_info:
+            if edge_nodes == target:
+                match = coord
+                break
+        if match is None:
+            raise RuntimeError(
+                f"could not locate catanatron port tile for fastcatan port "
+                f"{fast_port_idx} (cat nodes {target})"
+            )
+        result.append(match)
+    return result
+
+
+PORT_FAST_TO_COORD: list[tuple[int, int, int]] = _build_port_mapping()

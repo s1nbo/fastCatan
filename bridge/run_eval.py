@@ -21,7 +21,7 @@ from catanatron.models.player import RandomPlayer
 from catanatron.players.minimax import AlphaBetaPlayer
 from catanatron.players.value import ValueFunctionPlayer
 
-from catanatron_bridge import CatanatronBridge
+from bridge.catanatron_bridge import CatanatronBridge
 
 
 COLORS = [Color.RED, Color.BLUE, Color.ORANGE, Color.WHITE]
