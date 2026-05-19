@@ -66,6 +66,7 @@ struct PyEnv {
 
     // Snapshot/restore as Python bytes. Used by alpha-beta search to
     // branch state without committing to one path.
+    // Just for testing later Alpha Beta will be done in C++ for speed.
     nb::bytes snapshot() const {
         char buf[sizeof(GameState) + sizeof(BoardLayout)];
         std::memcpy(buf, &s, sizeof(GameState));
@@ -96,6 +97,7 @@ struct PyEnv {
 
 }  // namespace
 
+// Doc string for the whole module, plus bindings -  AI Generated
 NB_MODULE(_fastcatan, m) {
     m.doc() = R"(High-throughput Catan simulator (C++ core via nanobind).
 
@@ -117,7 +119,7 @@ Observation: ``OBS_SIZE`` float32 features per env, POV-relative
 Reward: +1 on the action that wins; -1 on actions that trigger
 another player's win (rare); 0 everywhere else.
 
-Determinism: same seed → same trajectory. Perft hashes pinned.
+Determinism: same seed -> same trajectory. Perft hashes pinned.
 )";
 
     // --- Sizes / constants ---

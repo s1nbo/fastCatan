@@ -53,8 +53,8 @@ void batched_env_destroy(BatchedEnv& env) noexcept {
 }
 
 void batched_env_reset(BatchedEnv& env) noexcept {
-#if FCATAN_HAVE_OPENMP
-    #pragma omp parallel for schedule(static)
+#if FCATAN_HAVE_OPENMP // if  Multi-Processing is enabled
+    #pragma omp parallel for schedule(static) 
 #endif
     for (int32_t i = 0; i < int32_t(env.n); ++i) {
         uint64_t seed = derive_seed(env.seed_counter, uint32_t(i));
