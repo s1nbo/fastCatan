@@ -80,16 +80,10 @@ def _player_block(state, seat: int, is_self: bool) -> list[float]:
         else:
             ports_bits[RES_CAT_TO_FAST[r]] = 1.0
 
-    # Discard remaining: catanatron tracks per-player via state.discard_counts.
-    # When player is in DISCARD prompt and hasn't discarded the required #
-    # yet, this is non-zero. Approximation: 0 if not discarding, else owed.
-    discard_left = 0
-    if state.is_discarding and state.current_color() == state.colors[seat]:
-        # Required = floor(handsize / 2). discard_counts[seat] tracks how many
-        # the player has already discarded this round.
-        already = state.discard_counts[seat]
-        owed = max(0, (handsize // 2) - already)
-        discard_left = owed
+    # Discard remaining: catanatron's `discard_counts[seat]` IS the remaining
+    # count to discard (initialized to handsize // 2 at the 7-roll, decremented
+    # per DISCARD_RESOURCE). Maps directly to fastcatan player_discard_remaining.
+    discard_left = state.discard_counts[seat] if state.is_discarding else 0
 
     is_current = 1.0 if state.current_color() == state.colors[seat] else 0.0
 
@@ -156,16 +150,65 @@ def _last_dice_roll(state) -> int:
     return 0
 
 
+def _dev_bought_this_turn(state, self_color) -> dict[str, int]:
+    """Count of each dev type bought by `self_color` since their last END_TURN.
+    Mirrors fastcatan's `player_dev_bought_this_turn`. Walks action_records
+    back; stops at our own END_TURN. VP cards skip the cooldown in fastcatan
+    so are not tracked here (always counted as playable)."""
+    out = {d: 0 for d in DEV_TYPES_FAST if d != "VICTORY_POINT"}
+    for rec in reversed(state.action_records):
+        at = rec.action.action_type
+        if at == ActionType.END_TURN and rec.action.color == self_color:
+            break
+        if (at == ActionType.BUY_DEVELOPMENT_CARD
+                and rec.action.color == self_color
+                and rec.result in out):
+            out[rec.result] += 1
+    return out
+
+
+def _per_opp_responses(state, self_seat: int) -> list[int]:
+    """4-vec by absolute seat: 0=PENDING, 1=ACCEPT, 2=DECLINE, 3=N/A.
+    Walks action_records back to the latest OFFER_TRADE to determine each
+    responder's status. Catanatron's `acceptees` only encodes ACCEPT vs
+    not-yet-accepted; reject is recoverable from action_records.
+    """
+    if not state.is_resolving_trade:
+        return [3, 3, 3, 3]
+    ct = state.current_trade
+    if isinstance(ct, tuple) and len(ct) >= 11 and isinstance(ct[10], int):
+        proposer_seat = ct[10]
+    else:
+        proposer_seat = 0
+    resp = [0, 0, 0, 0]
+    resp[proposer_seat] = 3  # N/A
+    for rec in reversed(state.action_records):
+        at = rec.action.action_type
+        if at == ActionType.OFFER_TRADE:
+            break
+        if at in (ActionType.ACCEPT_TRADE, ActionType.REJECT_TRADE):
+            seat = state.color_to_index[rec.action.color]
+            if seat != proposer_seat:
+                resp[seat] = 1 if at == ActionType.ACCEPT_TRADE else 2
+    return resp
+
+
 def _start_player_seat(state) -> int:
-    """The seat of the first player to act in initial placement. With
-    catanatron's standard reset, this is seat 0 (the first color)."""
-    # We could walk action_records to find the first BUILD_SETTLEMENT
-    # action; for the default Game ctor it's always seat 0.
+    """The seat of the first player to act in initial placement.
+
+    Walks action_records for the first BUILD_SETTLEMENT to recover the
+    actual starting color (robust to caller-reordered player lists).
+    Falls back to seat 0 if no settlement has been placed yet.
+    """
+    for rec in state.action_records:
+        if rec.action.action_type == ActionType.BUILD_SETTLEMENT:
+            return state.color_to_index[rec.action.color]
     return 0
 
 
 def encode_obs(game: Game, pov_color: Color,
-               compose_scratch: "tuple[list[int], list[int]] | None" = None) -> np.ndarray:
+               compose_scratch: "tuple[list[int], list[int]] | None" = None,
+               flag_override: "int | None" = None) -> np.ndarray:
     """Encode catanatron Game state into a fastcatan-formatted obs vector
     from `pov_color`'s perspective. Output: float32 array, len OBS_SIZE.
 
@@ -173,6 +216,11 @@ def encode_obs(game: Game, pov_color: Color,
     section with a bridge-maintained scratch (used during the compose
     sub-loop for OFFER_TRADE). When provided, the proposer slot is forced
     to self (relseat 0) and per-opponent responses are N/A.
+
+    `flag_override` forces the flag slot (0..7) regardless of catanatron
+    state. Used to mirror fastcatan-internal sub-phases catanatron emits
+    atomically: e.g. between MOVE_ROBBER hex pick and victim pick, set
+    flag=3 (ROBBER_STEAL) so the NN sees the same flag it saw at training.
     """
     state = game.state
     self_seat = _seat_of(state, pov_color)
@@ -191,19 +239,20 @@ def encode_obs(game: Game, pov_color: Color,
     for r_fast in range(5):
         cat_name = RES_FAST_TO_CAT[r_fast]
         out.append(float(ps[f"{self_key}_{cat_name}_IN_HAND"]))
-    # 5 dev cards owned (playable). We report total in hand; the "owned at
-    # start" flag distinguishes playable-this-turn but fastcatan stores
-    # the raw count, not playability.
+    # Dev cards: fastcatan splits playable vs pending. player_dev[d] is
+    # the playable count; player_dev_bought_this_turn[d] is the cooldown
+    # bucket (VP cards bypass cooldown — always in player_dev).
+    # Catanatron's `_OWNED_AT_START` is bool, lossy when count_at_start>0
+    # AND bought another this turn. Recover exact pending via action_records.
+    bought_this_turn = _dev_bought_this_turn(state, pov_color)
+    # 5 dev cards playable = total IN_HAND minus pending
     for dev in DEV_TYPES_FAST:
-        out.append(float(ps.get(f"{self_key}_{dev}_IN_HAND", 0)))
-    # 5 dev cards pending (bought this turn, can't play until next turn).
-    # Catanatron's `_OWNED_AT_START` flag tracks this for K/M/RB/YOP only;
-    # VP cards have no such flag (not pending-restricted).
+        total = ps.get(f"{self_key}_{dev}_IN_HAND", 0)
+        pending = bought_this_turn.get(dev, 0)  # VP not in dict -> 0
+        out.append(float(total - pending))
+    # 5 dev cards pending (cooldown bucket). VP always 0.
     for dev in DEV_TYPES_FAST:
-        owned = ps.get(f"{self_key}_{dev}_IN_HAND", 0)
-        owned_at_start = ps.get(f"{self_key}_{dev}_OWNED_AT_START", True)
-        pending = owned if (owned and not owned_at_start) else 0
-        out.append(float(pending))
+        out.append(float(bought_this_turn.get(dev, 0)))
     # dev_card_played flag
     out.append(float(ps[f"{self_key}_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN"]))
 
@@ -271,7 +320,8 @@ def encode_obs(game: Game, pov_color: Color,
 
     # --- Game state ---
     out.extend(_onehot(_phase_value(state), 4))
-    out.extend(_onehot(_flag_value(state), 8))
+    flag_val = flag_override if flag_override is not None else _flag_value(state)
+    out.extend(_onehot(flag_val, 8))
     out.extend(_onehot(_last_dice_roll(state), 13))
     out.append(state.num_turns / 400.0)
     # Bank (5, fastcatan order)
@@ -315,11 +365,15 @@ def encode_obs(game: Game, pov_color: Color,
     # Trade proposer (5)
     if compose_scratch is not None:
         give_fast, want_fast = compose_scratch
-        out.extend(_onehot(0, 5))  # proposer = self (relseat 0)
+        # Per src/catan/rules.cpp:145 + obs.cpp:149: during compose
+        # s.trade_proposer == NO_PLAYER → onehot(4, 5). Bridge never reaches
+        # OPEN here (OPEN exits the compose sub-loop), so proposer stays NONE.
+        out.extend(_onehot(4, 5))  # proposer = NONE during compose
         out.extend(float(x) for x in give_fast)
         out.extend(float(x) for x in want_fast)
+        # Per obs.cpp:158: pre-OPEN, trade_response is cleared (0 = PENDING).
         for _ in range(3):
-            out.extend(_onehot(3, 4))  # N/A for all opponents
+            out.extend(_onehot(0, 4))  # PENDING for all opponents
         arr = np.array(out, dtype=np.float32)
         assert arr.shape == (fastcatan.OBS_SIZE,), \
             f"obs size mismatch: got {arr.shape[0]}, expected {fastcatan.OBS_SIZE}"
@@ -360,17 +414,13 @@ def encode_obs(game: Game, pov_color: Color,
         out.extend([0.0] * 5)      # give
         out.extend([0.0] * 5)      # want
 
-    # Per-opponent response (3 * 4)
-    # Catanatron `acceptees` is tuple of bool per player slot for current trade.
-    # 4 states per opponent: 0=PENDING, 1=ACCEPT, 2=DECLINE, 3=N/A.
-    # Without explicit per-color tracking, simplest mapping:
+    # Per-opponent response (3 * 4): 0=PENDING, 1=ACCEPT, 2=DECLINE, 3=N/A.
+    # Catanatron's `acceptees` only marks ACCEPT (bool); DECLINE recovered
+    # by walking action_records back to the latest OFFER_TRADE.
+    responses = _per_opp_responses(state, self_seat)
     for rel in range(1, 4):
         seat = (self_seat + rel) & 0x3
-        if state.is_resolving_trade and seat < len(state.acceptees):
-            v = 1 if state.acceptees[seat] else 0  # PENDING or ACCEPT only
-        else:
-            v = 3  # N/A
-        out.extend(_onehot(v, 4))
+        out.extend(_onehot(responses[seat], 4))
 
     arr = np.array(out, dtype=np.float32)
     assert arr.shape == (fastcatan.OBS_SIZE,), \

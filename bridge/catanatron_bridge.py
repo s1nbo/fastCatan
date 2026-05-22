@@ -64,12 +64,29 @@ from bridge.obs_encoder import encode_obs
 
 _a = fastcatan.action
 
-_STEAL_NONE_SENTINEL = _a.STEAL_BASE + 4
-
 _COMPOSE_LOOP_CAP = 50
 
 
 PolicyFn = Callable[[np.ndarray, "list[int]", random.Random], int]
+
+
+def _maritime_ratio(a: Action) -> int:
+    """Catanatron MARITIME_TRADE value: 5-tuple (give x4, get). Non-None
+    slots in v[:4] = ratio (4=4:1, 3=3:1, 2=2:1). Lower is better."""
+    return sum(s is not None for s in a.value[:4])
+
+
+def _prefer_action(rep_map: dict, fid: int, a: Action) -> None:
+    """rep_map[fid] = a, but for MARITIME_TRADE prefer the better ratio
+    (catanatron emits one per ratio, all with the same fast key)."""
+    existing = rep_map.get(fid)
+    if existing is None:
+        rep_map[fid] = a
+        return
+    if (a.action_type == ActionType.MARITIME_TRADE
+            and existing.action_type == ActionType.MARITIME_TRADE
+            and _maritime_ratio(a) < _maritime_ratio(existing)):
+        rep_map[fid] = a
 
 
 def uniform_policy(obs: np.ndarray, mask: "list[int]", rng: random.Random) -> int:
@@ -106,9 +123,8 @@ class CatanatronBridge(Player):
         move_robbers = [a for a in playable_actions
                         if a.action_type == ActionType.MOVE_ROBBER]
         if move_robbers:
-            obs = encode_obs(game, self.color)
             return self._decide_move_robber(
-                obs, move_robbers, game.state.color_to_index)
+                game, move_robbers, game.state.color_to_index)
 
         # Trade resolve prompts: responder ACCEPT/REJECT or proposer
         # CANCEL/CONFIRM_p. All atomic.
@@ -116,9 +132,15 @@ class CatanatronBridge(Player):
             return self._decide_trade_resolve(game, playable_actions)
 
         # PLAY_TURN post-roll: optional OFFER_TRADE composition.
+        # Gate off during free-road placement — catanatron keeps prompt ==
+        # PLAY_TURN while free_roads_available > 0 after PLAY_ROAD_BUILDING,
+        # but the legal moves are ROAD_BASE only. Compose would surface
+        # ADD_GIVE/ADD_WANT/OPEN that fastcatan rules reject (flag=PLACE_ROAD).
         if (self._enable_trades
                 and prompt == ActionPrompt.PLAY_TURN
-                and player_has_rolled(game.state, self.color)):
+                and player_has_rolled(game.state, self.color)
+                and game.state.free_roads_available == 0
+                and not game.state.is_road_building):
             return self._decide_compose(game, playable_actions)
 
         # Regular path (initial placements, pre-roll, dev plays, discard, ...)
@@ -137,7 +159,7 @@ class CatanatronBridge(Player):
                 continue
             if not fids:
                 continue
-            rep_map.setdefault(fids[0], a)
+            _prefer_action(rep_map, fids[0], a)
 
         if not rep_map:
             return self._rng.choice(playable_actions)
@@ -153,7 +175,7 @@ class CatanatronBridge(Player):
     # MOVE_ROBBER: 2-step sub-policy (hex then victim).
     # ------------------------------------------------------------------
 
-    def _decide_move_robber(self, obs: np.ndarray, move_robbers, color_to_seat):
+    def _decide_move_robber(self, game: Game, move_robbers, color_to_seat):
         hex_to_actions: dict[tuple, list[Action]] = {}
         for a in move_robbers:
             coord = a.value[0]
@@ -165,27 +187,36 @@ class CatanatronBridge(Player):
             hex_id_to_coord[fid] = coord
         hex_mask = sorted(hex_id_to_coord.keys())
 
-        chosen_hex_id = self._policy(obs, hex_mask, self._rng)
+        # Hex pick: fastcatan flag = MOVE_ROBBER (2) — matches catanatron prompt.
+        obs_hex = encode_obs(game, self.color, flag_override=2)
+        chosen_hex_id = self._policy(obs_hex, hex_mask, self._rng)
         if chosen_hex_id not in hex_id_to_coord:
             chosen_hex_id = self._rng.choice(hex_mask)
         chosen_coord = hex_id_to_coord[chosen_hex_id]
 
         candidates = hex_to_actions[chosen_coord]
         if len(candidates) == 1:
+            # Catanatron emits (coord, None) as the sole option when no
+            # enemies are adjacent — forced move, no policy query needed.
             return candidates[0]
 
-        victim_to_action: dict[Optional[Color], Action] = {}
-        for a in candidates:
-            victim_to_action[a.value[1]] = a
-
-        steal_id_to_victim: dict[int, Optional[Color]] = {}
-        for victim in victim_to_action:
-            fid = (_STEAL_NONE_SENTINEL if victim is None
-                   else _a.STEAL_BASE + color_to_seat[victim])
-            steal_id_to_victim[fid] = victim
+        # Multi-candidate => all victims are real Colors (catanatron never
+        # mixes None with real victims for the same hex).
+        victim_to_action: dict[Color, Action] = {
+            a.value[1]: a for a in candidates
+        }
+        steal_id_to_victim: dict[int, Color] = {
+            _a.STEAL_BASE + color_to_seat[victim]: victim
+            for victim in victim_to_action
+        }
         steal_mask = sorted(steal_id_to_victim.keys())
 
-        chosen_steal_id = self._policy(obs, steal_mask, self._rng)
+        # Steal sub-pick: fastcatan transitions to Flag::ROBBER_STEAL (3) after
+        # MOVE_ROBBER. Override so NN sees the flag it was trained with.
+        # Note: robber_hex one-hot in obs still points at pre-move location
+        # (no mirror env to apply the hex pick). Acceptable — see decode docstring.
+        obs_steal = encode_obs(game, self.color, flag_override=3)
+        chosen_steal_id = self._policy(obs_steal, steal_mask, self._rng)
         if chosen_steal_id not in steal_id_to_victim:
             chosen_steal_id = self._rng.choice(steal_mask)
         return victim_to_action[steal_id_to_victim[chosen_steal_id]]
@@ -248,7 +279,7 @@ class CatanatronBridge(Player):
                 continue
             if not fids:
                 continue
-            regular_reps.setdefault(fids[0], a)
+            _prefer_action(regular_reps, fids[0], a)
 
         # Player's own resource freqdeck (fastcatan order) — caps ADD_GIVE.
         ps = game.state.player_state
@@ -268,13 +299,19 @@ class CatanatronBridge(Player):
                 if scratch_give[r] < own_resources_fast[r]:
                     mask_set.add(_a.TRADE_ADD_GIVE_BASE + r)
 
-            # ADD_WANT legal: always (bounded by reasonable cap).
-            for r in range(5):
-                if scratch_want[r] < 19:
-                    mask_set.add(_a.TRADE_ADD_WANT_BASE + r)
+            # ADD_WANT legal: only after give side non-empty. Prevents
+            # (0, N) degenerate scratches that would dead-end (OPEN
+            # requires both sides > 0) and forces give-before-want order.
+            if sum(scratch_give) > 0:
+                for r in range(5):
+                    if scratch_want[r] < 19:
+                        mask_set.add(_a.TRADE_ADD_WANT_BASE + r)
 
-            # OPEN legal: cat is_valid_trade — both sides non-empty AND
-            # no resource appears on both sides.
+            # OPEN legal: catanatron's `is_valid_trade` requires both sides
+            # non-empty AND no resource overlap (game.py:36). fastcatan is
+            # laxer (only non-empty), but bridge must restrict to what
+            # catanatron accepts — emitted OFFER_TRADE goes through
+            # catanatron's is_valid_action gate.
             if (sum(scratch_give) > 0 and sum(scratch_want) > 0
                     and not any(scratch_give[r] > 0 and scratch_want[r] > 0
                                 for r in range(5))):
@@ -285,8 +322,10 @@ class CatanatronBridge(Player):
             if chosen not in mask_set:
                 chosen = self._rng.choice(mask)
 
-            # Terminal: regular cat action.
-            if chosen in regular_reps and not self._is_compose_id(chosen):
+            # Terminal: regular cat action. (regular_reps comes from
+            # playable_actions during PLAY_TURN, which never contains
+            # trade-compose actions — no compose-id collision possible.)
+            if chosen in regular_reps:
                 return regular_reps[chosen]
 
             # ADD_GIVE
@@ -309,9 +348,3 @@ class CatanatronBridge(Player):
 
         # Loop cap hit — drop scratch, fall back to regular pick.
         return self._rng.choice(playable_actions)
-
-    @staticmethod
-    def _is_compose_id(fid: int) -> bool:
-        return (_a.TRADE_ADD_GIVE_BASE <= fid < _a.TRADE_ADD_GIVE_BASE + 5
-                or _a.TRADE_ADD_WANT_BASE <= fid < _a.TRADE_ADD_WANT_BASE + 5
-                or fid == _a.TRADE_OPEN)
