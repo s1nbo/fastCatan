@@ -190,12 +190,23 @@ def decode_confirm_trade(give_fast5: Sequence[int], want_fast5: Sequence[int],
 
 
 def encode_to_fast_ids(action: Action) -> list[int]:
-    """Translate a committed Catanatron action into the equivalent
-    fastcatan ID sequence (most commonly length 1; length 2 for
-    MOVE_ROBBER, length N+M+1 for OFFER_TRADE).
+    """Translate a committed Catanatron action into fastcatan ID(s).
 
-    Used by the bridge to step the mirror env after each Catanatron action,
-    so the mirror state stays aligned with the reference game.
+    Contract: returns the *keying* ID(s) the bridge uses as mask keys in
+    rep_map. Most actions yield length-1 lists. OFFER_TRADE expands to
+    N+M+1 (ADD_GIVE × N, ADD_WANT × M, OPEN) for completeness.
+
+    Incomplete cases (bridge resolves the missing seat/sub-ID itself):
+      - MOVE_ROBBER: returns only [MOVE_ROBBER_BASE+hex]. The paired
+        STEAL_BASE+seat ID is computed in `_decide_move_robber` from the
+        bridge's color->seat map (see catanatron_bridge.py:154).
+      - CONFIRM_TRADE: returns [TRADE_CONFIRM_BASE]. `_decide_trade_resolve`
+        adds the partner seat offset directly (catanatron_bridge.py:208).
+
+    Callers should use `fids[0]` as the mask key. The function is not a
+    full state-reproducing encoder for these two action types — there is
+    no mirror env to step, so the missing IDs are only needed for the
+    bridge's local keying.
     """
     at = action.action_type
     v = action.value
