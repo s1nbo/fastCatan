@@ -1,5 +1,12 @@
 # models/ — RL Training Plan
 
+> Status: scaffolding landed. `env.py`, `train_ppo.py`, `train_a2c.py`,
+> `train_dqn.py`, `train_muzero.py`, `eval.py` all present. Final
+> checkpoints stashed under `models/checkpoints/{a2c,dqn,muzero,ppo_random}/`.
+> Remaining: **gate run** — record ≥1000-game eval of PPO checkpoint vs
+> random with win rate ≥0.90 (M2 thesis gate). Obs/reward freeze before
+> M3 self-play.
+
 ## Context
 
 Project enters **M2** (PLAN.md:193). Need first RL agent. Targets:

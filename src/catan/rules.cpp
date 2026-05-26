@@ -12,6 +12,28 @@ namespace catan {
 static inline void recompute_full(const GameState& s,
                                    const BoardLayout& b,
                                    uint64_t mask[MASK_WORDS]) noexcept;
+
+// --- Longest-road component membership maintenance (see state.hpp) ---------
+// A node becomes a member of `player`'s longest-road graph when the player
+// builds an incident road/settlement while the node is not enemy-occupied.
+// Membership is the set of valid path endpoints in longest_road_for.
+inline void add_member_node(GameState& s, uint8_t player, uint8_t node) noexcept {
+    s.road_node_member[player] |= (uint64_t(1) << node);
+}
+inline bool member_node(const GameState& s, uint8_t player, uint8_t node) noexcept {
+    return (s.road_node_member[player] >> node) & 1u;
+}
+// Mark both endpoints of a freshly built road as members, except an endpoint
+// already occupied by an opponent (catanatron never adds enemy nodes to the
+// builder's component: board.py:202,205).
+inline void mark_road_endpoints(GameState& s, uint8_t edge_id, uint8_t player) noexcept {
+    for (uint8_t i = 0; i < 2; ++i) {
+        uint8_t v = topology::edge_to_node[edge_id][i];
+        uint8_t n = s.node[v];
+        bool enemy = (node_level(n) != NODE_EMPTY) && (node_owner(n) != player);
+        if (!enemy) add_member_node(s, player, v);
+    }
+}
 namespace {
 // 19 hex tiles: 3 brick, 4 lumber, 4 wool, 4 grain, 3 ore, 1 desert.
 // Resource codes match BoardLayout::hex_resource semantics in state.hpp.
@@ -258,6 +280,7 @@ inline void place_settlement(GameState& s, const BoardLayout& b,
     s.player_settlement_count[player] -= 1;
     s.player_vp[player] += 1;
     s.player_vp_without_dev[player] += 1;
+    add_member_node(s, player, node_id);  // settlement node is a road-graph endpoint
     grant_port(s, b, node_id, player);
     if (payout) payout_second_placement(s, b, node_id, player);
 }
@@ -265,6 +288,7 @@ inline void place_settlement(GameState& s, const BoardLayout& b,
 inline void place_road(GameState& s, uint8_t edge_id, uint8_t player) noexcept {
     s.edge[edge_id] = player;
     s.player_road_count[player] -= 1;
+    mark_road_endpoints(s, edge_id, player);
 }
 
 // After placing road, advance to next initial-placement turn or transition phase.
@@ -344,30 +368,20 @@ inline void pay_to_bank(GameState& s, uint8_t player, const uint8_t cost[5]) noe
     }
 }
 
-// MAIN-phase road legality. Edge must be empty and connect to player's
-// existing pieces at one endpoint without crossing an opponent's
-// settlement/city at that endpoint.
+// MAIN-phase road legality. The caller has already checked the edge is empty.
+// An empty edge is buildable iff it is incident to a node in the player's road
+// component (road_node_member). This matches catanatron's buildable_edges,
+// which expands from connected-component nodes over the static land graph
+// (board.py:262, 84). Component nodes are retained even after an opponent
+// settles on them, so a road may extend from a node the player reached earlier
+// (with a settlement or a road built while the node was not enemy-occupied)
+// even if that node now carries an enemy building. Conversely a node the
+// player only reached by building INTO an existing enemy building never joined
+// the component and does not make incident edges buildable.
 inline bool road_connects(const GameState& s, uint8_t edge_id, uint8_t player) noexcept {
-    for (uint8_t side = 0; side < 2; ++side) {
-        uint8_t v = topology::edge_to_node[edge_id][side];
-        uint8_t n = s.node[v];
-        uint8_t lvl = node_level(n);
-
-        // Opponent settlement/city at this endpoint blocks the chain.
-        if (lvl != NODE_EMPTY && node_owner(n) != player) continue;
-
-        // Own settlement/city at v -> connects.
-        if (lvl != NODE_EMPTY && node_owner(n) == player) return true;
-
-        // Otherwise (Node empty): a player road meeting at v (other than this edge).
-        for (uint8_t k = 0; k < topology::MAX_EDGES_PER_NODE; ++k) {
-            uint8_t e2 = topology::node_to_edge[v][k];
-            if (e2 == topology::NO_EDGE) break;
-            if (e2 == edge_id) continue;
-            if (s.edge[e2] == player) return true;
-        }
-    }
-    return false;
+    uint8_t u = topology::edge_to_node[edge_id][0];
+    uint8_t v = topology::edge_to_node[edge_id][1];
+    return member_node(s, player, u) || member_node(s, player, v);
 }
 
 inline void handle_build_settle(GameState& s, const BoardLayout& b, uint32_t action) noexcept {
@@ -486,36 +500,22 @@ inline void handle_roll_dice(GameState& s, const BoardLayout& b) noexcept {
         }
     }
 
-    // Apply per resource. Bank-shortage rule:
-    //   - Single recipient: gets min(demand, bank).
-    //   - Multiple recipients: all get full demand iff bank covers total;
-    //     otherwise nobody gets that resource.
+    // Apply per resource. Bank-shortage rule (matches catanatron's
+    // yield_resources, apply_action.py:570-584): a resource is paid out ONLY
+    // if the bank covers the FULL demand across all players; otherwise it is
+    // "depleted" and NO player receives any of it — there is no partial payout
+    // even when a single player is the sole recipient.
     for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
         uint8_t total = 0;
-        uint8_t recipients = 0;
-        uint8_t solo = 0;
+        for (uint8_t p = 0; p < NUM_PLAYERS; ++p) total += demand[p][r];
+        if (total == 0 || total > s.bank[r]) continue;  // none owed, or depleted
+
         for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
             if (demand[p][r] == 0) continue;
-            total += demand[p][r];
-            ++recipients;
-            solo = p;
+            s.player_resources[p][r] += demand[p][r];
+            s.player_handsize[p]     += demand[p][r];
+            s.bank[r]                -= demand[p][r];
         }
-        if (recipients == 0) continue;
-
-        if (recipients == 1) {
-            uint8_t give = (total <= s.bank[r]) ? total : s.bank[r];
-            s.player_resources[solo][r] += give;
-            s.player_handsize[solo]     += give;
-            s.bank[r]                   -= give;
-        } else if (total <= s.bank[r]) {
-            for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
-                if (demand[p][r] == 0) continue;
-                s.player_resources[p][r] += demand[p][r];
-                s.player_handsize[p]     += demand[p][r];
-                s.bank[r]                -= demand[p][r];
-            }
-        }
-        // else: contested + insufficient → nobody (skip).
     }
 }
 
@@ -787,15 +787,23 @@ static uint8_t lr_dfs(const GameState& s, uint8_t player,
     }
 
     visited[edge] = false;
-    return uint8_t(1 + max_branch);
+    // An edge whose far (exit) node is opponent-occupied does NOT count: in
+    // catanatron you can never step onto an enemy node, so such a segment is
+    // only ever counted by *starting* at the enemy node (handled by allowing
+    // member enemy nodes as DFS roots in longest_road_for), i.e. traversing
+    // it the other direction where the enemy node is the entry, not the exit.
+    return uint8_t((blocked ? 0u : 1u) + max_branch);
 }
 
 inline uint8_t longest_road_for(const GameState& s, uint8_t player) noexcept {
     uint8_t best = 0;
     for (uint8_t v = 0; v < topology::NUM_NODES; ++v) {
-        uint8_t n = s.node[v];
-        uint8_t lvl = node_level(n);
-        if (lvl != NODE_EMPTY && node_owner(n) != player) continue;
+        // Valid path roots are this player's component members only. This
+        // includes nodes now occupied by an opponent that the player had
+        // already reached with a road (catanatron keeps them in the
+        // component), and excludes enemy nodes the player only reached after
+        // the opponent settled there.
+        if (!member_node(s, player, v)) continue;
 
         for (uint8_t k = 0; k < topology::MAX_EDGES_PER_NODE; ++k) {
             uint8_t e = topology::node_to_edge[v][k];
@@ -839,8 +847,11 @@ inline void check_longest_road(GameState& s) noexcept {
 
     uint8_t threshold = (holder == NO_PLAYER) ? LONGEST_ROAD_THRESHOLD
                                               : uint8_t(holder_len + 1);
+    // Seed just below the threshold so reaching it exactly claims the title.
+    // (Previously hard-coded to 5, which forced the first claimant to reach 6:
+    // a player with exactly 5 roads and no incumbent never got the title.)
     uint8_t winner   = NO_PLAYER;
-    uint8_t winner_n = 5;  // must exceed 5 to claim if no current holder
+    uint8_t winner_n = uint8_t(threshold - 1);
     for (uint8_t p = 0; p < NUM_PLAYERS; ++p) {
         if (lens[p] >= threshold && lens[p] > winner_n) {
             winner   = p;
@@ -892,6 +903,7 @@ inline void handle_place_road(GameState& s, uint32_t action) noexcept {
     s.edge[edge_id] = pl;
     s.player_road_count[pl] -= 1;
     s.free_roads_remaining  -= 1;
+    mark_road_endpoints(s, edge_id, pl);
     check_longest_road(s);
 
     if (s.free_roads_remaining == 0 || !has_any_legal_road(s, pl) || s.player_road_count[pl] == 0) {

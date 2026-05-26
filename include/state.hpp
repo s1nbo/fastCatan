@@ -121,6 +121,18 @@ namespace catan {
         // Updated after every step_one. Consumers read this directly instead
         // of paying for a full recompute. PLAN.md M3 deliverable.
         uint64_t action_mask[5];
+
+        // --- Longest-road component membership (one 54-bit set per player) ---
+        // Bit n set => node n is a valid longest-road path endpoint for the
+        // player. A node joins the player's set when the player builds an
+        // incident road (or settlement) while the node is NOT enemy-occupied,
+        // and is never removed thereafter. This mirrors catanatron's
+        // connected-component bookkeeping (board.py build_road/build_settlement)
+        // and is what makes a road segment terminating at an opponent building
+        // count toward longest road IFF the road was built before the opponent
+        // settled there. Without it the longest-road length diverges from
+        // catanatron (the ground-truth engine) in ~65% of random games.
+        uint64_t road_node_member[4];
     };
 
     // Just for Checking.

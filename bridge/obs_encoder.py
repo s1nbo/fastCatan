@@ -112,12 +112,17 @@ def _phase_value(state) -> int:
         if state.player_state.get(f"{key}_ACTUAL_VICTORY_POINTS", 0) >= 10:
             return 3  # ENDED
     if state.is_initial_build_phase:
-        placed_settlements = 0
-        for c in state.colors:
-            placed_settlements += len(
-                state.buildings_by_color.get(c, {}).get("SETTLEMENT", [])
-            )
-        return 0 if placed_settlements < 4 else 1
+        # fastcatan splits initial placement into _1 (each player's 1st
+        # settlement+road, snake forward) and _2 (2nd settlement+road, snake
+        # back). The transition happens after the 4th *road* is placed
+        # (advance_initial_turn, rules.cpp:277) — NOT the 4th settlement. Using
+        # the settlement count mislabels the phase between the 4th settlement
+        # and 4th road, which breaks need_settlement() when injected.
+        roads_placed = sum(
+            15 - state.player_state[f"{player_key(state, c)}_ROADS_AVAILABLE"]
+            for c in state.colors
+        )
+        return 0 if roads_placed < 4 else 1
     return 2  # MAIN
 
 

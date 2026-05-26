@@ -45,6 +45,24 @@ else()
 endif()
 
 # --------------------------------------------------------------------
+# Standalone C++ benchmarks — pure-C++ throughput floor, no Python.
+# Built only in the standalone CMake build (not the pip wheel):
+#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+#   build/bench_step                  # single-env: step_one + random play
+#   build/bench_batched 4096 5000     # batched (uses OpenMP if available)
+# These corroborate the nanobind-dispatch isolation in
+# bench/bench_throughput.py. See HPC.md §4.
+# --------------------------------------------------------------------
+if(NOT SKBUILD)
+    foreach(_bench bench_step bench_batched)
+        add_executable(${_bench} bench/${_bench}.cpp)
+        target_link_libraries(${_bench} PRIVATE fastcatan_core)
+        target_compile_options(${_bench} PRIVATE
+            $<$<CONFIG:Release>:${FCATAN_RELEASE_FLAGS}>)
+    endforeach()
+endif()
+
+# --------------------------------------------------------------------
 # Python extension via nanobind (built when invoked through scikit-build-core).
 # --------------------------------------------------------------------
 if(SKBUILD)
