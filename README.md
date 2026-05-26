@@ -39,7 +39,7 @@ Verify:
 
 ```bash
 python3 -c "import fastcatan as fc; print(fc.OBS_SIZE, fc.NUM_ACTIONS)"
-# 724 296
+# 1084 286
 ```
 
 ### HPC
@@ -130,7 +130,7 @@ See [`tools/train_smoke.py`](tools/train_smoke.py) for the full setup.
 
 ### Action space
 
-Flat `Discrete(NUM_ACTIONS=296)`:
+Flat `Discrete(NUM_ACTIONS=286)`:
 
 ```
 0..53     SETTLE   build settlement at node N
@@ -173,7 +173,7 @@ for ~21% throughput win.
 
 ### Observation
 
-`obs` is a `float32[OBS_SIZE=724]` from the current player's perspective.
+`obs` is a `float32[OBS_SIZE=1084]` from the current player's perspective.
 Fields are POV-relative (self always at slot 0, opponents at +1, +2, +3).
 
 ### Reward

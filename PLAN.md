@@ -184,17 +184,22 @@ Goal: validate the C++ sim plays Catan correctly before any RL touches it. Self-
 
 - [x] Random baseline (Python).
 - [x] Alpha-Beta baseline (Python): depth-limited minimax + multi-feature heuristic.
-- [x] Log capture: random baseline games (action stream, board state, seed).
+- [x] Log capture: random baseline games (action stream, board state, seed). `ui/recorder.py` + `logs/game.jsonl.gz`.
 - [x] Log capture: Alpha-Beta baseline games.
-- [ ] Throughput + log dashboard: steps/sec headline + per-component µs breakdown (`step_one`, mask update, `write_obs`, RNG, nanobind dispatch); episode length distribution; win rates per seat; baseline-vs-baseline outcomes. Names the bottleneck before M2 training begins.
-- [ ] Correctness check: rule equivalence vs Catanatron on shared seed-replay corpus (action-by-action, same board, same dice); invariant fuzz green at 10⁷ random games. Catan rules are subtle — one mis-implemented corner case silently corrupts learning.
+- [x] Catanatron bridge: topology map, action codec, obs encoder, run_eval. 251 bridge tests green (`bridge/tests/`).
+- [x] Replay parity tests: `bridge/tests/test_parity_replay.py` walks shared-seed games action-by-action against Catanatron.
+- [x] Throughput + bottleneck dashboard: `bench/bench_throughput.py` (Python-path breakdown) + `bench/bench_step.cpp` & `bench/bench_batched.cpp` (pure-C++ floor, standalone CMake targets). `bench_throughput.py` gives the single-env per-component µs breakdown, batched kernel scaling with nanobind-dispatch isolation, and fastcatan-vs-Catanatron on equal footing (games/s, turns/s; steps/s flagged non-comparable). `bench/bench_comprehensive.py` covers the distribution half (episode length percentiles, win rates per seat, VP). **Bottlenecks named:** single-env baseline is *Python-bound* — the legal-action bit-scan (`legal_actions`) is the largest kernel (~410 ns, ~36% of per-step) and total Python overhead (scan + interpreter glue + policy) is ~80%; the pure-C++ `step_one` is only ~47 ns (Release, `bench_step` replay) ≈ 4% of the per-step budget, with another ~76 ns of nanobind dispatch + return-tuple alloc on top in the bound path. Batched hot path is *obs-encode-bound* — `write_obs` (~80 ns/env, 1084 floats) dominates `step_one` (~40 ns/env) once dispatch amortizes (dispatch floor ~40 ns/call). Note: `step_one` fuses rules+mask-update+RNG and is not separable from Python; combined it is ~47 ns so not the bottleneck. Single-env 0.75M steps/s (Python) vs batched 24M steps/s = the ~32× amortization that justifies `BatchedEnv`; pure-C++ floors are ~21M (single-env `step_one`) and ~11M/core (`bench_batched 4096`, single-thread, near-linear with OpenMP on HPC). Equal footing vs Catanatron random4: ~7× games/s and ~7× turns/s.
+- [ ] 10⁷-game invariant fuzz run (scaffolding in `sim/tests/test_invariants.py`, needs scaled execution).
 - **Gate: zero rule divergence vs Catanatron on replay corpus; per-component bottleneck named with measured µs in dashboard.**
 
 ### M2 — Initial RL Agent
 
-- MaskablePPO training pipeline driven by `BatchedEnv` (`tools/train_smoke.py` hardened).
-- Lock observation encoder + reward shaping.
-- Train first model vs random opponents.
+- [x] Shared Gym env over `fastcatan.Env` (`models/env.py`, seat 0 = learner, seats 1–3 random).
+- [x] MaskablePPO trainer (`models/train_ppo.py`) + checkpoint at `models/checkpoints/ppo_random/ppo_final.zip`.
+- [x] Reference trainers in separate files for thesis breadth: A2C, DQN, MuZero scaffold (`models/train_{a2c,dqn,muzero}.py`) + checkpoints.
+- [x] Eval harness `models/eval.py` (win rate + 95% Wilson CI vs random over N games).
+- [ ] Lock observation encoder + reward shaping (currently using native sim reward; obs/reward schema needs freeze before M3).
+- [ ] Gate run: ≥1000 games of PPO checkpoint vs random with win rate ≥0.90 recorded.
 - **Gate: >90% win rate vs random baseline over 1000 four-player games.**
 
 ### M3 — Self-Play Training
@@ -205,10 +210,10 @@ Goal: validate the C++ sim plays Catan correctly before any RL touches it. Self-
 
 ### M4 — Alpha-Beta Eval + Final Model
 
-- Tournament harness `play(agent_a, agent_b, n_games) -> (win_rate, 95% CI)`.
-- Final model vs Alpha-Beta over ≥1000 four-player games.
-- 10⁸-step soak test for stability.
-- Reproducibility doc: CMake args, GCC version, glibc, seed schedule, training config.
+- [~] Tournament harness `play(agent_a, agent_b, n_games) -> (win_rate, 95% CI)` (eval.py covers PPO-vs-random shape; needs PPO-vs-AB wiring).
+- [ ] Final model vs Alpha-Beta over ≥1000 four-player games.
+- [ ] 10⁸-step soak test for stability.
+- [ ] Reproducibility doc: CMake args, GCC version, glibc, seed schedule, training config.
 - **Thesis gate: >25% win rate vs Alpha-Beta with 95% CI.**
 
 ## Top 3 Risks

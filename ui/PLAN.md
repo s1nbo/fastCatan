@@ -59,10 +59,16 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
 
 ## Milestones
 
-### M0 — Plan (this commit)
+> Status: M0–M6 implementation landed (`recorder.py`, `obs_layout.py`,
+> `obs_decoder.py`, `board_render.py`, `state_panel.py`, `mask_view.py`,
+> `replay.py`, `action_names.py`, `log_format.py`, `geometry.py` all
+> present). Remaining work is **debugging** the renderer + replayer against
+> recorded games and verifying obs-decoder ↔ engine field parity.
+
+### M0 — Plan (this commit) — DONE
 - `PLAN.md` written. No code.
 
-### M1 — Log format + recorder
+### M1 — Log format + recorder — DONE
 - **Format**: gzipped JSONL or compressed `.npz`. Decide via prototype; start
   with **JSONL+gzip** (human-diffable, easy to grep, no schema lock-in). One
   record per env step. Header record first with seed, engine version, mask
@@ -93,7 +99,7 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
   mirroring `examples/random_player_test.py::play_one` but emitting the log.
   Should be a near-drop-in so the existing test harness can opt in via flag.
 
-### M2 — Obs decoder
+### M2 — Obs decoder — DONE (needs cross-check vs `bridge/obs_encoder.py`)
 - **`obs_layout.py`**: constants for every named slice of the obs vector
   (`PLAYER_BLOCKS = slice(0, 4*15)`, `SELF_PRIVATE = …`, `NODES = …`,
   `EDGES = …`, `HEXES = …`, `HEX_NUMS = …`, `PORTS = …`, `ROBBER = …`,
@@ -122,7 +128,7 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
   Relseats are kept (POV-relative). The renderer can map back to absolute
   seats via the recorded `current_player` from the log.
 
-### M3 — Board renderer
+### M3 — Board renderer — DONE (visual debug pass outstanding)
 - **`board_render.py`**: a function `draw_board(ax, view: BoardView,
   *, options) -> None` that paints onto a matplotlib axis:
   - Hex polygons coloured by resource (brick=red, lumber=green, wool=light
@@ -141,7 +147,7 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
   hand / road length / knights / ports / discard-owed, plus bank,
   dev deck, last roll, phase/flag.
 
-### M4 — Mask viewer
+### M4 — Mask viewer — DONE
 - **`mask_view.py`**: `decode_mask(mask: np.ndarray) -> dict[str, list[int]]`
   bucketing legal action IDs by category (`settle`, `city`, `road`,
   `move_robber`, `steal`, `discard`, `trade_bank`, `trade_p2p`, `dev_play`,
@@ -151,7 +157,7 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
   robber hexes a red outline. Non-spatial legal actions appear as a chip
   list in the side panel ("ROLL", "END_TURN", "PLAY_KNIGHT", …).
 
-### M5 — Replayer CLI
+### M5 — Replayer CLI — DONE (frames in `logs/frames/`, still debugging)
 - **`replay.py`**: entry-point.
   ```
   python -m ui.replay path/to/game.jsonl.gz
@@ -167,7 +173,7 @@ No subdirs unless we add a JS/web frontend later (out of scope for v1).
   `m` toggle mask overlay, `i` toggle ID labels, `1-4` switch POV, `q` quit.
   Implementation: matplotlib `key_press_event` on the figure. No new deps.
 
-### M6 — Action pretty-printer
+### M6 — Action pretty-printer — DONE
 - **`action_names.py`**: `name(action_id: int) -> str` and
   `describe(action_id) -> (category, payload)`. Examples: `36` →
   `"SETTLE @ node 0x24"`, `198` → `"ROAD @ edge 0x06"`. Drives:

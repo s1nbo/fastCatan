@@ -53,7 +53,7 @@ Verify:
 
 ```bash
 python3 -c "import fastcatan as fc; print(fc.OBS_SIZE, fc.NUM_ACTIONS)"
-# Should print: 724 296
+# Should print: 1084 286
 ```
 
 ## 4. Build the standalone benchmarks
