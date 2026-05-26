@@ -15,6 +15,7 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from models.env import FastCatanEnv
@@ -30,14 +31,18 @@ def _mask_fn(env):
 def _make_env(seed: int):
     def _thunk():
         e = FastCatanEnv(seed=seed)
-        return ActionMasker(e, _mask_fn)
+        e = ActionMasker(e, _mask_fn)
+        # Monitor records episode reward/length so SB3 logs rollout/ep_rew_mean
+        # and ep_len_mean — without it you cannot see whether the agent learns
+        # (the prior 5k-step run logged nothing and looked identical to random).
+        return Monitor(e)
 
     return _thunk
 
 
-def _build_vec_env(num_envs: int, base_seed: int, parallel: bool):
+def _build_vec_env(num_envs: int, base_seed: int, use_subproc: bool):
     fns = [_make_env(base_seed + i) for i in range(num_envs)]
-    if parallel and num_envs > 1:
+    if use_subproc and num_envs > 1:
         return SubprocVecEnv(fns)
     return DummyVecEnv(fns)
 
@@ -58,15 +63,17 @@ def main() -> None:
     p.add_argument("--save-dir", type=str, default=str(CKPT_DIR))
     p.add_argument("--save-freq", type=int, default=500_000)
     p.add_argument("--run-name", type=str, default="ppo_random")
-    p.add_argument("--no-parallel", action="store_true",
-                   help="Use DummyVecEnv (single-process) instead of SubprocVecEnv.")
+    p.add_argument("--subproc", action="store_true",
+                   help="Use SubprocVecEnv (multi-process). Default is DummyVecEnv: "
+                        "the C++ sim is cheap enough (~50 ns/step) that per-step "
+                        "cross-process obs pickling usually costs more than the step.")
     args = p.parse_args()
 
     save_dir = Path(args.save_dir) / args.run_name
     save_dir.mkdir(parents=True, exist_ok=True)
     tb_dir = save_dir / "tb"
 
-    env = _build_vec_env(args.num_envs, args.seed, parallel=not args.no_parallel)
+    env = _build_vec_env(args.num_envs, args.seed, use_subproc=args.subproc)
 
     model = MaskablePPO(
         MaskableActorCriticPolicy,

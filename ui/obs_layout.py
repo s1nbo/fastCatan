@@ -7,6 +7,11 @@ guards layout drift all import from here.
 Resource ordering (fastcatan): 0=brick, 1=lumber, 2=wool, 3=grain, 4=ore.
 Hex resource one-hot adds slot 5 = desert.
 Port type one-hot adds slot 5 = generic 3:1.
+
+Count fields (vp, handsize, dev, road lengths, resources, bank, ...) are stored
+NORMALIZED by structural Catan maxima (see src/catan/obs.cpp namespace norm and
+bridge/obs_encoder.py N_*). `obs_decoder.py` multiplies them back to integers.
+One-hots, port bits, and is_current are already 0/1.
 """
 
 from __future__ import annotations
