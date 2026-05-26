@@ -15,6 +15,28 @@ namespace catan {
 
 namespace {
 
+// Normalization divisors — structural Catan maxima, baked into the frozen obs
+// so every consumer sees ~[0,1] inputs. MUST stay in sync with
+// bridge/obs_encoder.py (catanatron eval path) and ui/obs_decoder.py.
+// Occasional values may exceed 1 (e.g. handsize after a monopoly); that is fine
+// for an MLP — the goal is comparable scale, not a hard bound.
+namespace norm {
+constexpr float VP        = 10.0f;  // win at 10
+constexpr float HAND      = 25.0f;  // hand can spike past 20 on a monopoly
+constexpr float DEV       = 10.0f;  // hidden dev cards held / bought
+constexpr float KNIGHTS   = 10.0f;
+constexpr float ROADLEN   = 15.0f;  // 15 road pieces
+constexpr float SETTLE    = 5.0f;   // settlements available (starts 5)
+constexpr float CITY      = 4.0f;   // cities available (starts 4)
+constexpr float ROAD      = 15.0f;  // roads available (starts 15)
+constexpr float DISCARD   = 10.0f;  // cards owed on a 7
+constexpr float RES       = 19.0f;  // per-resource bank cap
+constexpr float BANK      = 19.0f;
+constexpr float DEVDECK   = 25.0f;  // full dev deck size
+constexpr float FREEROADS = 2.0f;   // road-building grants up to 2
+constexpr float TRADE     = 19.0f;  // trade bundle counts (resource-bounded)
+}  // namespace norm
+
 inline uint8_t relseat(uint8_t self, uint8_t player) noexcept {
     return uint8_t((player + NUM_PLAYERS - self) & 0x3);
 }
@@ -38,18 +60,18 @@ struct Writer {
 inline void encode_player(Writer& w, const GameState& s, uint8_t pl,
                            bool is_self) noexcept {
     // VP: total for self (private), public-only for opponents.
-    w.put(float(is_self ? s.player_vp[pl] : s.player_vp_without_dev[pl]));
-    w.put(float(s.player_handsize[pl]));
-    w.put(float(s.player_total_dev[pl]));
-    w.put(float(s.player_knights_played[pl]));
-    w.put(float(s.player_road_length[pl]));
-    w.put(float(s.player_settlement_count[pl]));
-    w.put(float(s.player_city_count[pl]));
-    w.put(float(s.player_road_count[pl]));
+    w.put(float(is_self ? s.player_vp[pl] : s.player_vp_without_dev[pl]) / norm::VP);
+    w.put(float(s.player_handsize[pl])         / norm::HAND);
+    w.put(float(s.player_total_dev[pl])        / norm::DEV);
+    w.put(float(s.player_knights_played[pl])   / norm::KNIGHTS);
+    w.put(float(s.player_road_length[pl])      / norm::ROADLEN);
+    w.put(float(s.player_settlement_count[pl]) / norm::SETTLE);
+    w.put(float(s.player_city_count[pl])       / norm::CITY);
+    w.put(float(s.player_road_count[pl])       / norm::ROAD);
     uint8_t ports = s.player_ports[pl];
-    for (int b = 0; b < 6; ++b) w.put(float((ports >> b) & 1));
-    w.put(float(s.player_discard_remaining[pl]));
-    w.put(float(s.current_player == pl ? 1 : 0));
+    for (int b = 0; b < 6; ++b) w.put(float((ports >> b) & 1));  // already 0/1
+    w.put(float(s.player_discard_remaining[pl]) / norm::DISCARD);
+    w.put(float(s.current_player == pl ? 1 : 0));                // already 0/1
 }
 
 }  // namespace
@@ -65,10 +87,10 @@ void write_obs(const GameState& s, const BoardLayout& b,
     }
 
     // ----- Self private -----
-    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.player_resources[self][r]));
-    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.player_dev[self][d]));
-    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.player_dev_bought_this_turn[self][d]));
-    w.put(float(s.dev_card_played ? 1 : 0));
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.player_resources[self][r]) / norm::RES);
+    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.player_dev[self][d]) / norm::DEV);
+    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.player_dev_bought_this_turn[self][d]) / norm::DEV);
+    w.put(float(s.dev_card_played ? 1 : 0));  // already 0/1
 
     // ----- Board: nodes (8 channels per node, in relseat order) -----
     // [self_settle, self_city, opp+1_settle, opp+1_city,
@@ -127,8 +149,8 @@ void write_obs(const GameState& s, const BoardLayout& b,
     // dice_roll one-hot over 13 slots (0 = not rolled, 2..12 valid)
     w.onehot(int(s.dice_roll), 13);
     w.put(float(s.turn_count) / 400.0f);          // normalized turn count
-    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.bank[r]));
-    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.dev_deck[d]));
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.bank[r]) / norm::BANK);
+    for (uint8_t d = 0; d < 5; ++d)             w.put(float(s.dev_deck[d]) / norm::DEVDECK);
 
     // longest_road_owner: 5 slots [self, +1, +2, +3, none]
     if (s.longest_road_owner == NO_PLAYER) w.onehot(4, 5);
@@ -142,15 +164,15 @@ void write_obs(const GameState& s, const BoardLayout& b,
     w.onehot(int(relseat(self, s.start_player)), 4);
 
     // free_roads_remaining
-    w.put(float(s.free_roads_remaining));
+    w.put(float(s.free_roads_remaining) / norm::FREEROADS);
 
     // ----- Trade scratch -----
     // trade_proposer: 5 slots [self, +1, +2, +3, none]
     if (s.trade_proposer == NO_PLAYER) w.onehot(4, 5);
     else                                w.onehot(int(relseat(self, s.trade_proposer)), 5);
     // trade_give and trade_want: 5 resource counts each
-    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_give[r]));
-    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_want[r]));
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_give[r]) / norm::TRADE);
+    for (uint8_t r = 0; r < NUM_RESOURCES; ++r) w.put(float(s.trade_want[r]) / norm::TRADE);
 
     // Per-opponent response: 4-slot one-hot [PENDING, ACCEPT, DECLINE, N/A]
     for (uint8_t rel = 1; rel < NUM_PLAYERS; ++rel) {

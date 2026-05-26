@@ -26,6 +26,10 @@ MASK_WORDS = fastcatan.MASK_WORDS
 
 LEARNER_SEAT = 0
 WIN_VP = 10
+# Episode cap. Termination is VP-only (a degenerate stall — builds nothing,
+# declines all — could run unbounded; turn_count is uint16 and would wrap).
+# ~2.5x the /400 obs turn horizon: a safety truncation, not a tuned param.
+MAX_TURNS = 1000
 
 
 def _unpack_mask(mask_words: np.ndarray) -> np.ndarray:
@@ -89,7 +93,8 @@ class FastCatanEnv(gym.Env):
         for p in range(fastcatan.NUM_PLAYERS):
             if self._env.player_vp(p) >= WIN_VP:
                 return 1.0 if p == LEARNER_SEAT else -1.0
-        return 0.0
+        # No winner (tie / no-winner terminal): treat as loss.
+        return -1.0
 
     def _step_opponents(self) -> tuple[bool, float]:
         """Advance the sim until current_player == LEARNER_SEAT or terminal.
@@ -139,6 +144,10 @@ class FastCatanEnv(gym.Env):
         done, term_r = self._step_opponents()
         if done:
             return self._read_obs(), term_r, True, False, {}
+
+        if self._env.turn_count >= MAX_TURNS:
+            # Stalled game (no winner): treat as terminal loss, no bootstrap.
+            return self._read_obs(), -1.0, True, False, {}
 
         return self._read_obs(), 0.0, False, False, {}
 

@@ -41,6 +41,29 @@ RES_NAMES = ("brick", "lumber", "wool", "grain", "ore")
 # Trade response slots (4-wide one-hot per opponent).
 TRADE_RESP_NAMES = ("PENDING", "ACCEPT", "DECLINE", "N/A")
 
+# Normalization divisors — MUST match src/catan/obs.cpp (namespace norm) and
+# bridge/obs_encoder.py. Count fields in the obs are stored as value/divisor;
+# decode multiplies back to recover the integer game value.
+N_VP = 10.0
+N_HAND = 25.0
+N_DEV = 10.0
+N_KNIGHTS = 10.0
+N_ROADLEN = 15.0
+N_SETTLE = 5.0
+N_CITY = 4.0
+N_ROAD = 15.0
+N_DISCARD = 10.0
+N_RES = 19.0
+N_BANK = 19.0
+N_DEVDECK = 25.0
+N_FREEROADS = 2.0
+N_TRADE = 19.0
+
+
+def _unq(x: float, divisor: float) -> int:
+    """De-normalize a stored obs value (value/divisor) back to its integer."""
+    return int(round(float(x) * divisor))
+
 
 # ---------------------------------------------------------------------------
 # Structured view
@@ -128,16 +151,16 @@ def _decode_player_block(block: np.ndarray, rel: int) -> PlayerBlock:
     return PlayerBlock(
         rel=rel,
         is_self=(rel == 0),
-        vp=int(block[L.PB_VP]),
-        handsize=int(block[L.PB_HANDSIZE]),
-        total_dev=int(block[L.PB_TOTAL_DEV]),
-        knights_played=int(block[L.PB_KNIGHTS]),
-        road_length=int(block[L.PB_ROAD_LEN]),
-        settlements_left=int(block[L.PB_SETTLE_LEFT]),
-        cities_left=int(block[L.PB_CITY_LEFT]),
-        roads_left=int(block[L.PB_ROAD_LEFT]),
+        vp=_unq(block[L.PB_VP], N_VP),
+        handsize=_unq(block[L.PB_HANDSIZE], N_HAND),
+        total_dev=_unq(block[L.PB_TOTAL_DEV], N_DEV),
+        knights_played=_unq(block[L.PB_KNIGHTS], N_KNIGHTS),
+        road_length=_unq(block[L.PB_ROAD_LEN], N_ROADLEN),
+        settlements_left=_unq(block[L.PB_SETTLE_LEFT], N_SETTLE),
+        cities_left=_unq(block[L.PB_CITY_LEFT], N_CITY),
+        roads_left=_unq(block[L.PB_ROAD_LEFT], N_ROAD),
         ports=tuple(bool(x) for x in block[L.PB_PORTS]),
-        discard_owed=int(block[L.PB_DISCARD_LEFT]),
+        discard_owed=_unq(block[L.PB_DISCARD_LEFT], N_DISCARD),
         is_current=bool(block[L.PB_IS_CURRENT] > 0.5),
     )
 
@@ -227,12 +250,12 @@ def decode(obs: np.ndarray) -> BoardView:
         for i, s in enumerate(L.PLAYER_BLOCKS)
     ]
 
-    self_hand = tuple(int(x) for x in o[L.SELF_RES.start:L.SELF_RES.stop])
+    self_hand = tuple(_unq(x, N_RES) for x in o[L.SELF_RES.start:L.SELF_RES.stop])
     self_dev_playable = tuple(
-        int(x) for x in o[L.SELF_DEV_PLAYABLE.start:L.SELF_DEV_PLAYABLE.stop]
+        _unq(x, N_DEV) for x in o[L.SELF_DEV_PLAYABLE.start:L.SELF_DEV_PLAYABLE.stop]
     )
     self_dev_pending = tuple(
-        int(x) for x in o[L.SELF_DEV_PENDING.start:L.SELF_DEV_PENDING.stop]
+        _unq(x, N_DEV) for x in o[L.SELF_DEV_PENDING.start:L.SELF_DEV_PENDING.stop]
     )
     self_played_flag = bool(o[L.SELF_DEV_PLAYED_FLAG.start] > 0.5)
 
@@ -254,18 +277,18 @@ def decode(obs: np.ndarray) -> BoardView:
     last_roll = roll_idx if roll_idx >= 0 else 0
 
     turn_norm = float(o[L.TURN_NORM.start])
-    bank = tuple(int(x) for x in o[L.BANK.start:L.BANK.stop])
-    dev_deck = tuple(int(x) for x in o[L.DEV_DECK.start:L.DEV_DECK.stop])
+    bank = tuple(_unq(x, N_BANK) for x in o[L.BANK.start:L.BANK.stop])
+    dev_deck = tuple(_unq(x, N_DEVDECK) for x in o[L.DEV_DECK.start:L.DEV_DECK.stop])
 
     lr_rel = _decode_owner_5slot(o[L.LR_OWNER.start:L.LR_OWNER.stop])
     la_rel = _decode_owner_5slot(o[L.LA_OWNER.start:L.LA_OWNER.stop])
     sp_idx = _argmax_onehot(o[L.START_PLAYER.start:L.START_PLAYER.stop])
     start_player_rel = sp_idx if sp_idx >= 0 else 0
-    free_roads = int(o[L.FREE_ROADS.start])
+    free_roads = _unq(o[L.FREE_ROADS.start], N_FREEROADS)
 
     proposer_rel = _decode_owner_5slot(o[L.TRADE_PROPOSER.start:L.TRADE_PROPOSER.stop])
-    give = tuple(int(x) for x in o[L.TRADE_GIVE.start:L.TRADE_GIVE.stop])
-    want = tuple(int(x) for x in o[L.TRADE_WANT.start:L.TRADE_WANT.stop])
+    give = tuple(_unq(x, N_TRADE) for x in o[L.TRADE_GIVE.start:L.TRADE_GIVE.stop])
+    want = tuple(_unq(x, N_TRADE) for x in o[L.TRADE_WANT.start:L.TRADE_WANT.stop])
     responses = _decode_trade_responses(o[L.TRADE_RESPONSES.start:L.TRADE_RESPONSES.stop])
 
     return BoardView(

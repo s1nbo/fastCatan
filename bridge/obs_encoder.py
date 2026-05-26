@@ -45,6 +45,24 @@ from bridge.action_codec import RES_CAT_TO_FAST, RES_FAST_TO_CAT
 
 # Fastcatan-aligned ordered lists.
 DEV_TYPES_FAST = ["KNIGHT", "VICTORY_POINT", "ROAD_BUILDING", "YEAR_OF_PLENTY", "MONOPOLY"]
+
+# Normalization divisors — MUST match src/catan/obs.cpp (namespace norm) and
+# ui/obs_decoder.py. Structural Catan maxima baked into the frozen obs so the
+# obs the NN sees at catanatron eval matches what it trained on in fastcatan.
+N_VP = 10.0
+N_HAND = 25.0
+N_DEV = 10.0
+N_KNIGHTS = 10.0
+N_ROADLEN = 15.0
+N_SETTLE = 5.0
+N_CITY = 4.0
+N_ROAD = 15.0
+N_DISCARD = 10.0
+N_RES = 19.0
+N_BANK = 19.0
+N_DEVDECK = 25.0
+N_FREEROADS = 2.0
+N_TRADE = 19.0
 # Note: fastcatan obs.cpp comment says "[resources(5), dev_playable(5),
 # dev_bought_pending(5), dev_card_played]". The 5 dev types in fastcatan
 # slot order match `DEV_TYPES_FAST` above.
@@ -88,12 +106,13 @@ def _player_block(state, seat: int, is_self: bool) -> list[float]:
     is_current = 1.0 if state.current_color() == state.colors[seat] else 0.0
 
     return [
-        float(vp), float(handsize), float(total_dev),
-        float(knights), float(road_len),
-        float(settle_left), float(city_left), float(road_left),
-        *ports_bits,
-        float(discard_left),
-        is_current,
+        float(vp) / N_VP, float(handsize) / N_HAND, float(total_dev) / N_DEV,
+        float(knights) / N_KNIGHTS, float(road_len) / N_ROADLEN,
+        float(settle_left) / N_SETTLE, float(city_left) / N_CITY,
+        float(road_left) / N_ROAD,
+        *ports_bits,                       # already 0/1
+        float(discard_left) / N_DISCARD,
+        is_current,                        # already 0/1
     ]
 
 
@@ -243,7 +262,7 @@ def encode_obs(game: Game, pov_color: Color,
     # 5 resources in fastcatan order
     for r_fast in range(5):
         cat_name = RES_FAST_TO_CAT[r_fast]
-        out.append(float(ps[f"{self_key}_{cat_name}_IN_HAND"]))
+        out.append(float(ps[f"{self_key}_{cat_name}_IN_HAND"]) / N_RES)
     # Dev cards: fastcatan splits playable vs pending. player_dev[d] is
     # the playable count; player_dev_bought_this_turn[d] is the cooldown
     # bucket (VP cards bypass cooldown — always in player_dev).
@@ -254,10 +273,10 @@ def encode_obs(game: Game, pov_color: Color,
     for dev in DEV_TYPES_FAST:
         total = ps.get(f"{self_key}_{dev}_IN_HAND", 0)
         pending = bought_this_turn.get(dev, 0)  # VP not in dict -> 0
-        out.append(float(total - pending))
+        out.append(float(total - pending) / N_DEV)
     # 5 dev cards pending (cooldown bucket). VP always 0.
     for dev in DEV_TYPES_FAST:
-        out.append(float(bought_this_turn.get(dev, 0)))
+        out.append(float(bought_this_turn.get(dev, 0)) / N_DEV)
     # dev_card_played flag
     out.append(float(ps[f"{self_key}_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN"]))
 
@@ -332,11 +351,11 @@ def encode_obs(game: Game, pov_color: Color,
     # Bank (5, fastcatan order)
     for r_fast in range(5):
         cat_idx = RESOURCES.index(RES_FAST_TO_CAT[r_fast])
-        out.append(float(state.resource_freqdeck[cat_idx]))
+        out.append(float(state.resource_freqdeck[cat_idx]) / N_BANK)
     # Dev deck remaining (5, fastcatan dev order)
     deck = state.development_listdeck
     for dev in DEV_TYPES_FAST:
-        out.append(float(deck.count(dev)))
+        out.append(float(deck.count(dev)) / N_DEVDECK)
 
     # Longest road owner (5 slots: self, +1, +2, +3, none)
     lr_color = None
@@ -364,7 +383,7 @@ def encode_obs(game: Game, pov_color: Color,
     out.extend(_onehot(_relseat(self_seat, _start_player_seat(state)), 4))
 
     # Free roads remaining
-    out.append(float(state.free_roads_available))
+    out.append(float(state.free_roads_available) / N_FREEROADS)
 
     # --- Trade scratch (27) ---
     # Trade proposer (5)
@@ -374,8 +393,8 @@ def encode_obs(game: Game, pov_color: Color,
         # s.trade_proposer == NO_PLAYER → onehot(4, 5). Bridge never reaches
         # OPEN here (OPEN exits the compose sub-loop), so proposer stays NONE.
         out.extend(_onehot(4, 5))  # proposer = NONE during compose
-        out.extend(float(x) for x in give_fast)
-        out.extend(float(x) for x in want_fast)
+        out.extend(float(x) / N_TRADE for x in give_fast)
+        out.extend(float(x) / N_TRADE for x in want_fast)
         # Per obs.cpp:158: pre-OPEN, trade_response is cleared (0 = PENDING).
         for _ in range(3):
             out.extend(_onehot(0, 4))  # PENDING for all opponents
@@ -408,12 +427,12 @@ def encode_obs(game: Game, pov_color: Color,
         give_cat = list(ct[:5])
         for r_fast in range(5):
             cat_idx = RESOURCES.index(RES_FAST_TO_CAT[r_fast])
-            out.append(float(give_cat[cat_idx]))
+            out.append(float(give_cat[cat_idx]) / N_TRADE)
         # Want (5, fastcatan order)
         want_cat = list(ct[5:10])
         for r_fast in range(5):
             cat_idx = RESOURCES.index(RES_FAST_TO_CAT[r_fast])
-            out.append(float(want_cat[cat_idx]))
+            out.append(float(want_cat[cat_idx]) / N_TRADE)
     else:
         out.extend(_onehot(4, 5))  # proposer = none
         out.extend([0.0] * 5)      # give
