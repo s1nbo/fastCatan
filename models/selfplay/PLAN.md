@@ -226,10 +226,10 @@ Findings:
       free per-opponent stats from rollouts, `--league-decay`, resume via
       `league_state.json`. Logic unit-tested (eviction, dedup crediting, PFSP-hard
       sampling, decay, state round-trip). **NOT yet run at scale.**
-- [ ] run the sweep — **UNBLOCKED 2026-05-28**: warm-start from the verified
-      1084 seed `models/checkpoints/ppo_1084_50m/ppo_final.zip` via `--init-from`
-      (running from scratch is a poor M3 test — M2 took ~15–20M just to beat
-      random).
+- [~] run the sweep — **IN PROGRESS 2026-05-28**: running now, warm-started from
+      the verified 1084 seed `models/checkpoints/ppo_1084_50m/ppo_final.zip` via
+      `--init-from` (running from scratch is a poor M3 test — M2 took ~15–20M just
+      to beat random).
 - [ ] decide stall fix long-term: keep `--no-p2p-trade` vs C++ TRADE_OPEN cap
       (the thesis wants trading intact → prefer the C++ cap before final runs).
 - **artifacts:** smoke ckpts in `checkpoints/sp_smoke_{1m,5m}/` (~16 MB, untracked —
