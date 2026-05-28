@@ -2,17 +2,17 @@
 
 Date: 2026-05-27. Validates that the AB/ harness + `bridge/` work end-to-end on
 the **committed source interface** (obs 1084, actions 286), independent of any
-trained model. Run in an **isolated** git worktree + venv so the shared `.venv`
-(still the stale 724/296 build) was never touched.
+trained model. Run in an **isolated** git worktree + venv during the interface
+rebuild, before the 1084 build became the live anaconda env.
 
 ## Why this was needed
 
 The committed source is **obs 1084 / actions 286** (`include/obs.hpp`,
 `include/mask.hpp`), and `bridge/obs_encoder.py` is on the matching 1084 layout.
-But the installed `fastcatan.so` (and every checkpoint) is the **stale 724/296**
-build from 2026-05-06. No model has been trained on 1084/286 yet. So a real
-bridge-vs-AlphaBeta run cannot use any existing checkpoint — this validation
-proves the *plumbing* is correct and ready for the eventual 1084 retrain.
+At the time of this validation no model had been trained on 1084/286 yet, so a
+real bridge-vs-AlphaBeta run could not use any checkpoint — this validation
+proves the *plumbing* is correct and ready for the 1084 model. (That model,
+`ppo_1084_50m`, has since been trained and run through the harness.)
 
 ## Setup (isolated)
 
@@ -53,9 +53,9 @@ worktree needed.
 ## To produce the actual thesis number
 
 1. Train a model on the **1084/286** interface (anaconda env, 768 envs):
-   `…/anaconda3/bin/python -m models.train_ppo --num-envs 768 --total-steps 20_000_000 --run-name ppo_1084_20m`
+   `…/anaconda3/bin/python -m models.train_ppo --num-envs 768 --total-steps 50_000_000 --run-name ppo_1084_50m`
 2. fastcatan is already 1084/286 in anaconda (`pip install -e .` from current
-   source). ⚠️ All 724/296 checkpoints are obsolete against it.
-3. `PYTHONHASHSEED=0 …/anaconda3/bin/python -m AB.tournament --ckpt models/checkpoints/ppo_1084_20m/ppo_final.zip \
-      --opponent alphabeta --ab-prune --games 1000`
+   source).
+3. `PYTHONHASHSEED=0 …/anaconda3/bin/python -m AB.tournament --ckpt models/checkpoints/ppo_1084_50m/ppo_final.zip \
+      --opponent alphabeta --ab-prune --games 1000 --no-trades`
 4. Gate: 95% Wilson CI lower bound > 0.25.

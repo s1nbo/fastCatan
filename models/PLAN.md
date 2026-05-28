@@ -12,13 +12,9 @@
 >   (`--subproc` to opt into SubprocVecEnv). DummyVecEnv is ~1.45× faster here
 >   because the C++ sim is so cheap that per-step IPC pickling dominates.
 > - **Shapes: `OBS_SIZE=1084`, `NUM_ACTIONS=286`** (286 mask bits in `uint64[5]`).
->   ⚠️ This is the **current build**, but the `.so` was a stale **724 / 296** build
->   until the **2026-05-27 rebuild** (the 1084 build is now the **anaconda**
->   interpreter; `.venv` is still 724). **`ppo_capped_50m` and every existing
->   checkpoint were trained at 724/296 and are OBSOLETE against the 1084 build**
->   (won't load — wrong obs *and* action dim); retrain on 1084 before M4 eval / M3
->   warm-start. (Verified: headers compile to 1084/286; `ppo_capped_50m` loads as
->   obs (724,) act 296. See `AB/REPRODUCIBILITY.md` §4–5.)
+>   The thesis env is the **anaconda** interpreter (`AB/REPRODUCIBILITY.md` §5);
+>   the editable build (`editable.rebuild=true`) recompiles on import so it can't
+>   go stale. The verified M2/M3 seed is `ppo_1084_50m`.
 > - **Reward (env.py):** +1 learner win; **−1 for every non-win terminal**
 >   (opponent win, no-winner, and a `turn_count>=MAX_TURNS` stall cap → −1,
 >   `terminated=True`). ✅ **FIXED (2026-05-27):** two-part fix in `env.py`.
@@ -58,13 +54,11 @@
 >   (distribution parity), `bench/bench_step.cpp` + `bench/bench_batched.cpp`
 >   (pure-C++ floor). Catanatron quirks: see [[catanatron-seat-shuffle]].
 >
-> **M2 GATE: MET ✅** stall-cap fix → retrained 50M (`ppo_capped_50m`) →
-> 1000-game gate passed (sampling 99.4%, deterministic 99.5%). ⚠️ Run on the
-> **stale 724/296 build** — it *proves* the gate but is **obsolete vs the 1084
-> build** (see ⚠️ at top); M3/M4 retrain there. The pre-cap runs (`ppo_random_10m`,
-> `ppo_random_768`) and the undertrained 10M `ppo_capped_768` were **deleted**
-> (2026-05-27) — trained without the cap or before convergence (`ppo_random_768`
-> = 66.7% capped). Next: M3 self-play.
+> **M2 GATE: MET ✅** stall-cap fix → retrained 50M on the 1084/286 build
+> (`ppo_1084_50m`) → gate passed: **95.5%** vs random native (200g, sampling,
+> CI-low 0.917) and **89.5%** via the bridge vs `RandomPlayer` (200g,
+> `--no-trades`). This is the verified M3 self-play warm-start seed. Next: M3
+> self-play.
 >
 > **Obs/reward FROZEN (done).** Obs count fields normalized by structural Catan
 > maxima — divisors in `src/catan/obs.cpp` `namespace norm`, mirrored in
@@ -88,7 +82,7 @@ Project enters **M2** (PLAN.md:193). Need first RL agent. Targets:
   Q-Learning (DQN), Actor-Critic (A2C), PPO (MaskablePPO via sb3-contrib),
   MuZero (model-based + MCTS).
 - All share one Gymnasium env (`env.py`) over `fastcatan.Env` (1084-dim obs,
-  286 discrete actions, 320-bit/296-used legal-action mask).
+  286 discrete actions, 320-bit/286-used legal-action mask).
 - Learner controls seat 0; seats 1–3 = uniform-random-legal opponents
   (M2 gate: >90% vs random).
 - Keep scripts *simple* — each file self-contained, no premature abstraction.
@@ -131,7 +125,7 @@ Each file is self-contained — no shared utility module — so they can be read
 - `FastCatanVecEnv(num_envs, seed, opponent_policy="random") -> VecEnv`
 - Implements `reset()`, `step_async()/step_wait()`, `action_masks()` (required by MaskablePPO).
 - Observation space: `Box(low=-inf, high=inf, shape=(OBS_SIZE,), dtype=float32)`.
-- Action space: `Discrete(NUM_ACTIONS)` (296).
+- Action space: `Discrete(NUM_ACTIONS)` (286).
 - **Inner loop**: after learner steps for seat 0, advance C++ env until `current_player()==0` again by sampling opponent actions from `opponent_policy(obs, mask)`. Random uses uniform-over-legal from `examples/player_base.py:legal_actions`.
 
 ### 2. Reward = native sim signal
@@ -140,7 +134,7 @@ Use as-is: +1 on win-action, -1 if action lets opponent win, 0 else (bindings.cp
 
 ### 3. Action masking
 
-`MaskablePPO.predict(obs, action_masks=...)` from `sb3_contrib`. Pull mask via `BatchedEnv.write_masks(buf)` → unpack uint64[5] → bool[296] per env. Helper already exists in `examples/player_base.py:legal_actions` — reuse.
+`MaskablePPO.predict(obs, action_masks=...)` from `sb3_contrib`. Pull mask via `BatchedEnv.write_masks(buf)` → unpack uint64[5] → bool[286] per env. Helper already exists in `examples/player_base.py:legal_actions` — reuse.
 
 ### 4. Training defaults (`train_ppo.py`)
 

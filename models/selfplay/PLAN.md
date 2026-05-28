@@ -24,15 +24,11 @@ Python, same place `FastCatanEnv` already drives the random opponents.
 
 ## Shape note (read before training)
 
-The interface is now **`OBS_SIZE=1084`, `NUM_ACTIONS=286`** — rebuilt 2026-05-27
-in the **anaconda** env (`/home/sinan/anaconda3/bin/python`); `.venv` is still the
-stale **724/296** build. ⚠️ The existing checkpoints (this dir's `sp_smoke_*` /
-`sweep`, and the M2 `ppo_capped_50m`) were all trained at **724/296** and are
-**obsolete against the 1084 build** — they will not load against it. Everything
-here reads `fastcatan.OBS_SIZE` / `NUM_ACTIONS` **dynamically**, so the code
-survives the rebuild, but **retrain the seed checkpoint on 1084 first**, then
-warm-start self-play from that. (The `ppo_random_768` / `ppo_random_10m` named in
-older versions of this note were deleted 2026-05-27.)
+The interface is **`OBS_SIZE=1084`, `NUM_ACTIONS=286`** — run in the **anaconda**
+env (`/home/sinan/anaconda3/bin/python`). Everything here reads
+`fastcatan.OBS_SIZE` / `NUM_ACTIONS` **dynamically**, so the code is interface-
+agnostic. Warm-start self-play from the verified M2 seed
+`models/checkpoints/ppo_1084_50m/ppo_final.zip`.
 
 ## Layout
 
@@ -40,8 +36,9 @@ older versions of this note were deleted 2026-05-27.)
 models/selfplay/
 ├── PLAN.md            (this file)
 ├── opponents.py       Opponent interface, RandomOpponent, PolicyOpponent, OpponentPool
-├── selfplay_env.py    SelfPlayEnv(FastCatanEnv): seats 1-3 = pool snapshots
-├── train_selfplay.py  rotation loop: warm-start, train rounds, freeze, rotate, inline gate
+├── league.py          League: bounded "best-N" archive + PFSP matchmaking (opt-in --league)
+├── selfplay_env.py    SelfPlayEnv(FastCatanEnv): seats 1-3 = pool/league snapshots
+├── train_selfplay.py  rotation loop: warm-start, train rounds, freeze, rotate, inline gate, --resume
 ├── gate.py            head-to-head latest-vs-N-ago, win rate + Wilson CI, >0.55 gate
 ├── eval_seats.py      per-seat win rate (newest seat0 vs 3 older); + --equal-baseline
 └── sweep.py           grid runner (lr × ent × snapshot-interval × arch) → results table
@@ -61,13 +58,54 @@ Namespace package (no `__init__.py`, matching `models/`); run via
 - Trainer keeps **one** `MaskablePPO` model + **one** `DummyVecEnv`; the pool is
   **shared and mutated** between `learn()` chunks. Each round:
   1. `model.learn(steps_per_round, reset_num_timesteps=(round==0))`
-  2. `model.save(snap_N.zip)`; `pool.add(PolicyOpponent.load(snap_N.zip))`
-  3. inline gate: `snap_latest` vs `snap_{latest-gate_lag}`.
+  2. `model.save(snap_N.zip)`; `pool.add_candidate(PolicyOpponent.load(snap_N.zip), snap_N.zip)`
+     (`add_candidate` is a window-pool alias for `add`; the League uses the path for eviction)
+  3. inline gate: `snap_latest` vs `snap_{latest-gate_lag}` (loaded from `snap_paths` on disk).
 - `snapshot interval = steps_per_round` (one freeze per round) → the swept knob.
 
 Warm-start uses `model.set_parameters(init_ckpt)` (weights only) so sweep
 hyperparams (lr, ent_coef) take effect while reusing M2 weights. Default policy
 arch only (must match the checkpoint).
+
+**Crash recovery (`--resume`).** Re-running is a *restart* (round loop from 0,
+empty pool, snapshot numbering + gate log reset). `--resume` makes it a real
+*continue*: glob `snap_*.zip` → rebuild the pool → `MaskablePPO.load()` the
+latest (optimizer + `num_timesteps`, so numbering keeps going) → start at round
+N → append the gate log. The schedule/gate flags are persisted to
+`run_config.json` on a fresh run and restored on resume (so a continue can't
+miscalibrate the linear-lr decay or gate rules); the gate log is streamed to
+`gate_log.jsonl` per round so there's something to append to. Just re-pass
+`--run-name`. The inline gate now loads its two contestants from the append-only
+`snap_paths` (on disk), not the pool, so "latest vs N-ago" is correct under
+resume AND when a league has evicted the N-ago snapshot.
+
+### League & PFSP (`league.py`, opt-in `--league`)
+
+An alternative to the sliding-window pool: a **bounded archive of the `--league-
+size` (default 32) best snapshots** sampled by **prioritized fictitious self-play**
+(AlphaStar). It's a drop-in (`sample() -> {seat: opponent}`), so `SelfPlayEnv` is
+unchanged and you can A/B window-pool vs league.
+
+- **PFSP weight** over `p_i` = learner's smoothed win-rate vs member *i* (Laplace
+  prior → 0.5 when unseen): `--pfsp hard` (default) `w=(1-p)^β` favors opponents
+  you *lose* to (fix weaknesses); `--pfsp even` `w=p(1-p)` favors evenly-matched.
+  `p_random` random opponents are still mixed in (anti-collapse).
+- **Stats are free.** `SelfPlayEnv.step` credits every league opponent at the
+  table (a win iff seat 0 won, terminal reward > 0) into the shared pool — no
+  extra games. `--league-decay` (e.g. 0.9/round) fades old counts so PFSP tracks
+  the *improving* learner.
+- **"Best 32" = hybrid recency + difficulty.** Always keep the most-recent
+  `--league-recent` (default 8; the newest are strongest and a just-frozen model
+  has no stats); fill the rest with the hardest-for-the-learner (lowest `p`),
+  evicting the *easiest* non-recent member on overflow. Bounded → it can forget
+  old easy-to-beat strategies; that's the deliberate cost of the cap (an
+  unbounded league wouldn't, at higher memory/compute).
+- **Credit assignment** is the 4-player approximation: each distinct member in a
+  game shares that game's binary outcome (vs AlphaStar's clean 1-v-1). Monotone
+  and good enough for matchmaking; documented in `league.py`.
+- **Resume:** archive membership + counts are persisted to `league_state.json`
+  each round and restored on `--resume` (the bounded/evicted subset can't be
+  reconstructed from the snap set alone).
 
 ### Gate (`gate.py`) — balanced 2-vs-2
 
@@ -178,11 +216,20 @@ Findings:
       4e-4→1e-4; works around SB3's per-`learn()` progress reset) and
       `--target-kl` (PPO KL early-stop). `--pool-window` already an axis.
       `sweep.py` now grids lr × ent × interval × arch × **sched × kl**.
-- [ ] run the sweep — **BLOCKED**: all `checkpoints/` were wiped by the M2
-      retrain (`ppo_random_10m/768` gone), so there is no seed to `--init-from`.
-      Binary is still 724/296 (not yet rebuilt to 1084/286). Needs a fresh M2
-      checkpoint on the current binary before a warm-started sweep; running
-      from scratch is a poor M3 test (M2 took 10M just to beat random).
+- [x] `--resume` crash-continue: glob snaps → rebuild pool → `MaskablePPO.load`
+      latest (optimizer + `num_timesteps`) → start at round N → append gate log;
+      `run_config.json` + `gate_log.jsonl` persisted, gate loads from `snap_paths`.
+      Helper logic unit-tested (numeric snap ordering, gate-log append, config
+      restore).
+- [x] league / PFSP (`league.py`, `--league`): bounded best-N archive, PFSP
+      hard/even sampling, hybrid recency+difficulty eviction (`--league-recent`),
+      free per-opponent stats from rollouts, `--league-decay`, resume via
+      `league_state.json`. Logic unit-tested (eviction, dedup crediting, PFSP-hard
+      sampling, decay, state round-trip). **NOT yet run at scale.**
+- [ ] run the sweep — **UNBLOCKED 2026-05-28**: warm-start from the verified
+      1084 seed `models/checkpoints/ppo_1084_50m/ppo_final.zip` via `--init-from`
+      (running from scratch is a poor M3 test — M2 took ~15–20M just to beat
+      random).
 - [ ] decide stall fix long-term: keep `--no-p2p-trade` vs C++ TRADE_OPEN cap
       (the thesis wants trading intact → prefer the C++ cap before final runs).
 - **artifacts:** smoke ckpts in `checkpoints/sp_smoke_{1m,5m}/` (~16 MB, untracked —

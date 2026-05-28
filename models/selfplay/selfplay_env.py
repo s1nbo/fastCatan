@@ -74,6 +74,19 @@ class SelfPlayEnv(FastCatanEnv):
         self._seat_opp = self._pool.sample()
         return super().reset(seed=seed, options=options)
 
+    def step(
+        self, action: int
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """As FastCatanEnv.step, but on episode end credit this episode's
+        opponents to the pool: each league opponent that was at the table gets a
+        game, and a win iff seat 0 won (terminal reward > 0). No-op for the window
+        pool. `self._seat_opp` is still this episode's map (reset re-samples it)."""
+        obs, reward, terminated, truncated, info = super().step(action)
+        if terminated or truncated:
+            self._pool.record_result(
+                self._seat_opp.values(), learner_won=reward > 0.0)
+        return obs, reward, terminated, truncated, info
+
     def _step_opponents(self) -> tuple[bool, float]:
         """Advance until current_player == LEARNER_SEAT or terminal.
 
