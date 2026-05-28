@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-27T15:15:42",
+  "ckpt": "models/checkpoints/ppo_1084_50m/ppo_final.zip",
+  "algo": "ppo",
+  "deterministic": false,
+  "enable_trades": true,
+  "opponent": "alphabeta",
+  "ab_depth": 2,
+  "ab_prune": true,
+  "seed": 42,
+  "pythonhashseed": "0",
+  "games": 5,
+  "decided": 5,
+  "no_winner": 0,
+  "bridge_wins": 0,
+  "win_rate": 0.0,
+  "ci95_low": -2.7755575615628914e-17,
+  "ci95_high": 0.43449149475208104,
+  "gate_baseline": 0.25,
+  "gate_pass": false,
+  "seat_wins": {
+    "RED": 0,
+    "BLUE": 2,
+    "ORANGE": 2,
+    "WHITE": 1
+  },
+  "elapsed_s": 6.0527660790030495,
+  "s_per_game": 1.2105532158006098
+}

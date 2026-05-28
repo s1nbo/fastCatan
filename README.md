@@ -47,7 +47,7 @@ pip install -r requirements.txt                         # catanatron (pinned) fo
 > `editable.rebuild=true` makes scikit-build-core recompile the extension on the
 > next `import fastcatan` after any C++ change. Without it, `pip install -e .`
 > builds once and the binary silently goes stale when `obs.hpp`/`mask.hpp` change
-> (this caused a 724/296-vs-1084/286 drift; see `AB/REPRODUCIBILITY.md` §4–5).
+> (see `AB/REPRODUCIBILITY.md` §5).
 
 Verify:
 
@@ -183,7 +183,7 @@ All action IDs are exposed as `fastcatan.action.<NAME>`.
 
 ### Action mask
 
-Mask is a `uint64[5]` (320 bits, 296 used). Bit `i` set ⇔ action `i` is
+Mask is a `uint64[5]` (320 bits, 286 used). Bit `i` set ⇔ action `i` is
 legal. Read via `env.write_masks(buf)` (BatchedEnv) or
 `info["action_mask_packed"]` (GymEnv). For SB3-style consumers, GymEnv
 also unpacks to a `bool[NUM_ACTIONS]` in `info["action_mask"]`.

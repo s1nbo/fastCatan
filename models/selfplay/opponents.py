@@ -98,6 +98,16 @@ class OpponentPool:
     def add(self, opp: Opponent) -> None:
         self._snaps.append(opp)
 
+    def add_candidate(self, opp: Opponent, path=None) -> None:
+        """League-compatible alias (the window pool ignores `path` and never
+        evicts), so the trainer can add to a pool or a League with one call."""
+        self.add(opp)
+
+    def record_result(self, opps, learner_won: bool) -> None:
+        """No-op: the window pool samples uniformly and tracks no per-opponent
+        results. Present so SelfPlayEnv can credit game outcomes uniformly across
+        the window pool and the PFSP League (which overrides this)."""
+
     def __len__(self) -> int:
         return len(self._snaps)
 

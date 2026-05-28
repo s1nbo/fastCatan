@@ -254,10 +254,10 @@ Goal: validate the C++ sim plays Catan correctly before any RL touches it. Self-
 - [x] Eval harness `models/eval.py` (win rate + 95% Wilson CI vs random over N games).
 - [x] Lock observation encoder + reward. **Obs frozen**: 1084 floats, count fields normalized by structural Catan maxima (divisors in `src/catan/obs.cpp` `namespace norm`, mirrored in `bridge/obs_encoder.py` + `ui/obs_decoder.py` — keep in sync; verified by `test_obs_identity`). **Reward frozen**: sparse ±1 terminal (+1 on the action reaching 10 VP, −1 if it lets an opponent win), no shaping; `models/env.py` treats a stalled game (`turn_count >= MAX_TURNS=1000`) and a no-winner terminal as a **loss** (−1). NOTE: changing obs/reward invalidates trained checkpoints — the old `models/checkpoints/*` were deleted after this freeze.
 - [x] ✅ **Stall fixed (two-part, `models/env.py`).** The dominant stall is a *within-turn* `ADD_WANT`→`TRADE_CANCEL` trade-compose loop that never opens a trade nor ends the turn, so `turn_count` (only bumped on END_TURN, `src/catan/rules.cpp:540`) froze and the old `turn_count`-based −1 cap never fired (~85% of greedy/argmax games stalled to the limit). **Primary fix:** a per-turn **trade-compose cap** in `action_masks()` (`MAX_TRADE_COMPOSE_PER_TURN=20` masks the ADD/REMOVE/OPEN block, ids 268–288, once spent; CANCEL/ACCEPT/DECLINE/CONFIRM stay legal so the mask is never emptied). **Backstop:** the episode cap recounted in per-episode *learner steps* (`MAX_EPISODE_STEPS=3000`), not `turn_count`. A step-counter cap *alone* is insufficient — it truncates *winnable* games (the policy wins, just after thousands of churn steps, so capping mid-churn scores a win as a loss). **M1 fuzz independently confirmed a no-winner terminal is necessary**: ~3/10⁷ random games reach a rule-correct deadlock (board built out + dev deck exhausted ⇒ last VP unreachable) with no sim-level terminal (see §M1).
-- [x] ✅ **Gate MET (2026-05-27).** `ppo_capped_50m` (MaskablePPO, 768 envs, 50M steps, ~32 min) vs random: **99.4%** over 1000 games (sampling, 95% CI [0.987, 0.997], 0 no-winner) and **99.5%** (200-game deterministic). Eval with **sampling** for undertrained models (argmax stalls/underperforms before convergence; 10M steps was too few — converges ~15–20M). ⚠️ This run is on the **stale 724/296 build** (`.venv`): it *proves* the M2 gate, but the checkpoint is **obsolete against the rebuilt 1084/286 interface** (won't load) — M3/M4 retrain there (`ppo_1084_20m`, see `AB/REPRODUCIBILITY.md`).
+- [x] ✅ **Gate MET (2026-05-28).** `ppo_1084_50m` (MaskablePPO, 768 envs, 50M steps, checkpoints every 5M) clears the M2 gate on the 1084/286 build — **95.5%** vs random native (200g, sampling, CI-low 0.917, `models.eval`) and **89.5%** via the bridge vs `RandomPlayer` (200g, `--no-trades`, CI [0.845, 0.930], 0 no-winner). Eval with **sampling** for undertrained models (argmax stalls/underperforms before convergence; 10M steps was too few — converges ~15–20M). This is the verified M3 self-play warm-start seed.
 - **Gate: >90% win rate vs random baseline over 1000 four-player games.**
 
-### M3 — Self-Play Training (scaffolding DONE ✅; self-play verified working; full run pending a 1084 seed)
+### M3 — Self-Play Training (scaffolding DONE ✅; self-play verified working; full run UNBLOCKED 2026-05-28 — 1084 seed `ppo_1084_50m` verified, see §M2)
 
 Self-contained in `models/selfplay/` (full detail in its `PLAN.md`). **No C++ change
 needed**: `Env.write_obs(seat, buf)` is perspective-flipped, so a seat-0-trained policy
@@ -283,24 +283,46 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
   assignment rotated to cancel seat bias) → **neutral 0.50**, so `>0.55` = meaningfully
   better, the intended semantics. Wilson CI + a `conclusive` guard (fails honestly when
   too many games stall). `eval_seats.py` keeps the per-seat 1-vs-3 diagnostic.
-- [x] **Self-play works** (smoke on the **stale 724/296 `.venv` build**, warm-started from
-  an M2 vs-random checkpoint, `--no-p2p-trade`): improves **monotonically** — per-seat
+- [x] **Self-play works** (smoke warm-started from an M2 vs-random checkpoint,
+  `--no-p2p-trade`): improves **monotonically** — per-seat
   4-way newest-vs-r3/r2/r1 = 0.42 / 0.34 / 0.19 / 0.06; recalibrated gate r4-vs-r3 =
   **0.642 PASS**, equal-policy = 0.483 (neutral confirmed). Mechanically flawless (0%
   no-winner under `--no-p2p-trade`, clean CIs). Earlier "instability" was a misread of the
   miscalibrated 1-vs-3 gate; under 2-vs-2 every round beats its predecessor.
+- [x] **PFSP league** (`league.py`, opt-in `--league`): a bounded **best-N archive**
+  (`--league-size 32`) sampled by **prioritized fictitious self-play** instead of the
+  recency window — opponents weighted by how often they currently beat the learner
+  (`--pfsp hard` `(1-p)^β` default, or `even` `p(1-p)`). Win-rates `p_i` come **free** from
+  the training rollouts (`SelfPlayEnv.step` credits each league opponent at the table;
+  `--league-decay` fades old counts to track the improving learner). "Best N" = **hybrid**:
+  always keep the most-recent `--league-recent` (8), fill the rest with the hardest-for-the-
+  learner, evict the easiest non-recent on overflow. Drop-in for `OpponentPool` (same
+  `sample()` surface) → an A/B against the window pool. Logic unit-tested; **not yet run at
+  scale** (same 1084-seed blocker below).
+- [x] **`--resume` crash-continue** (`train_selfplay.py`): re-running was a *restart* (loop
+  from round 0, empty pool, snapshot numbering + gate log reset). `--resume` is a real
+  *continue*: glob `snap_*.zip` → rebuild pool/league → `MaskablePPO.load` the latest
+  (optimizer + `num_timesteps`, so numbering keeps going) → start at round N → append the
+  gate log. Schedule/gate flags persist to `run_config.json` (restored on resume so the
+  linear-lr decay / gate rules can't drift); gate log streams to `gate_log.jsonl`; league
+  archive+stats to `league_state.json`. Inline gate now loads its two contestants from the
+  append-only on-disk `snap_paths`, so "latest vs N-ago" is correct under resume AND league
+  eviction. Just re-pass `--run-name`.
 - [~] **Trade-loop stall**: four strong policies stall the TRADE_OPEN/CANCEL loop → no
   winner → gate undecidable. Worked around with **`--no-p2p-trade`** (Python mask AND-NOT,
   applied in train AND gate). M2's later per-turn **trade-compose cap** (`action_masks`,
   §M2) plausibly mitigates this with trading intact — **re-verify on 1084 whether
   `--no-p2p-trade` is still needed** (the thesis wants full trading).
-- [ ] **Run the schedule + sweep — BLOCKED on a 1084 seed checkpoint.** All 724/296
-  checkpoints were deleted in the M2 retrain; the canonical interface is now **1084/286**
-  (anaconda build; `.venv` is stale 724/296). Retrain the M2 seed on 1084
-  (`ppo_1084_20m`, §M2) → warm-start the sweep from it. **Curriculum: random-first (M2)
+- [ ] **Run the schedule + sweep + league — UNBLOCKED 2026-05-28.** The 1084 seed now
+  exists and is verified: `ppo_1084_50m` (§M2, 95.5% vs random native / 89.5% via bridge).
+  Warm-start the sweep/schedule from it (`--init-from
+  models/checkpoints/ppo_1084_50m/ppo_final.zip`). Interface is **1084/286** (anaconda
+  build — run in anaconda). **Curriculum: random-first (M2)
   → warm-start self-play** is the right order — sparse ±1 reward can't cold-start against
   strong opponents; keep `p_random` > 0 throughout. All M3 code reads `OBS_SIZE`/
-  `NUM_ACTIONS` dynamically, so it runs unchanged on 1084.
+  `NUM_ACTIONS` dynamically, so it runs unchanged on 1084. **This is the thesis critical
+  path**: M4 confirmed a random-trained agent scores 0 vs AlphaBeta (§M4); self-play is the
+  only route to the >25% gate.
 - **Gate: latest model beats N-step-ago snapshot >55% (balanced 2-vs-2, neutral 0.50, conclusive).**
 
 ### M4 — Alpha-Beta Eval + Final Model
@@ -311,9 +333,9 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
 > `requirements.txt`, `AB/REPRODUCIBILITY.md` §6), not PyPI.
 
 - [x] Tournament harness (`AB/tournament.py` + `AB/policy.py`): policy-via-bridge vs `AlphaBetaPlayer`/`ValueFunctionPlayer`/`RandomPlayer`, win rate + 95% Wilson CI + the thesis gate (CI-low > 0.25) → `AB/results/*.json`. Pipeline validated end-to-end on the 1084/286 interface (`test_obs_identity` 5/5 encoder↔C++ parity; uniform-bridge games vs Value/AlphaBeta complete — `AB/results/validation_1084.md`).
-- [ ] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ready; blocked on a 1084/286-trained model** — `models/checkpoints/` was wiped (every checkpoint was stale 724/296, obsolete against the rebuilt 1084 binary); retrain from scratch on 1084 (anaconda), then run. AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune`.
+- [~] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ran live (2026-05-27) on the 1084 M2 seed `ppo_1084_50m`: 0/200 vs AlphaBeta** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019], gate FAIL) and 0/5 with trades. **Verified the 0 is real, not a bridge/plumbing bug (2026-05-28):** the *same model, same harness, swapping AlphaBeta→`RandomPlayer`* scores **179/200 (89.5%)**, and **95.5%** native vs random — so the bridge faithfully conveys the model's skill; a random-trained PPO genuinely cannot beat AlphaBeta. **Now blocked on a *stronger* model, not plumbing** — needs the M3 self-play output (warm-started from `ppo_1084_50m`). AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune`.
 - [~] 10⁸-step soak test for stability: harness done (`AB/soak.py` — finite-obs + mask-integrity + RSS-leak checks); smoked green (10k steps, RSS flat 1.00×); full run pending (~24 min at ~70k steps/s).
-- [x] Reproducibility doc: `AB/REPRODUCIBILITY.md` (toolchain, build flags + `editable.rebuild=true`, two-env setup, catanatron git pin, seeds, training config).
+- [x] Reproducibility doc: `AB/REPRODUCIBILITY.md` (toolchain, build flags + `editable.rebuild=true`, anaconda env, catanatron git pin, seeds, training config).
 - **Thesis gate: >25% win rate vs Alpha-Beta with 95% CI** (Wilson CI lower bound > 0.25).
 
 ## Top 3 Risks

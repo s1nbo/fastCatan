@@ -9,7 +9,7 @@ the section they need.
 > Large parts below describe files/layout that are **not in the current tree**.
 > Trust this block on any conflict:
 >
-> - **Shapes:** `OBS_SIZE = 1084`, `NUM_ACTIONS = 286` (doc says 724 — wrong).
+> - **Shapes:** `OBS_SIZE = 1084`, `NUM_ACTIONS = 286`.
 > - **No `tools/` dir exists.** No `train_smoke.py`, `profile_train.py`,
 >   `c_api.cpp`, `build_*.sh`, or `tools/test_*.py`. Tests live in `sim/tests/`
 >   and `bridge/tests/`. Board viz is `visual/viz_topology.py`. Perft hashes are
