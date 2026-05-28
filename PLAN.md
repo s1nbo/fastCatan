@@ -257,7 +257,7 @@ Goal: validate the C++ sim plays Catan correctly before any RL touches it. Self-
 - [x] ✅ **Gate MET (2026-05-28).** `ppo_1084_50m` (MaskablePPO, 768 envs, 50M steps, checkpoints every 5M) clears the M2 gate on the 1084/286 build — **95.5%** vs random native (200g, sampling, CI-low 0.917, `models.eval`) and **89.5%** via the bridge vs `RandomPlayer` (200g, `--no-trades`, CI [0.845, 0.930], 0 no-winner). Eval with **sampling** for undertrained models (argmax stalls/underperforms before convergence; 10M steps was too few — converges ~15–20M). This is the verified M3 self-play warm-start seed.
 - **Gate: >90% win rate vs random baseline over 1000 four-player games.**
 
-### M3 — Self-Play Training (scaffolding DONE ✅; self-play verified working; full run UNBLOCKED 2026-05-28 — 1084 seed `ppo_1084_50m` verified, see §M2)
+### M3 — Self-Play Training (scaffolding DONE ✅; self-play verified working; full run IN PROGRESS 2026-05-28 — warm-started from the verified 1084 seed `ppo_1084_50m`, see §M2)
 
 Self-contained in `models/selfplay/` (full detail in its `PLAN.md`). **No C++ change
 needed**: `Env.write_obs(seat, buf)` is perspective-flipped, so a seat-0-trained policy
@@ -313,9 +313,9 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
   applied in train AND gate). M2's later per-turn **trade-compose cap** (`action_masks`,
   §M2) plausibly mitigates this with trading intact — **re-verify on 1084 whether
   `--no-p2p-trade` is still needed** (the thesis wants full trading).
-- [ ] **Run the schedule + sweep + league — UNBLOCKED 2026-05-28.** The 1084 seed now
-  exists and is verified: `ppo_1084_50m` (§M2, 95.5% vs random native / 89.5% via bridge).
-  Warm-start the sweep/schedule from it (`--init-from
+- [~] **Run the schedule + sweep + league — IN PROGRESS 2026-05-28** (running now,
+  warm-started from the verified 1084 seed `ppo_1084_50m`, §M2 — 95.5% vs random
+  native / 89.5% via bridge — via `--init-from
   models/checkpoints/ppo_1084_50m/ppo_final.zip`). Interface is **1084/286** (anaconda
   build — run in anaconda). **Curriculum: random-first (M2)
   → warm-start self-play** is the right order — sparse ±1 reward can't cold-start against
@@ -333,7 +333,7 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
 > `requirements.txt`, `AB/REPRODUCIBILITY.md` §6), not PyPI.
 
 - [x] Tournament harness (`AB/tournament.py` + `AB/policy.py`): policy-via-bridge vs `AlphaBetaPlayer`/`ValueFunctionPlayer`/`RandomPlayer`, win rate + 95% Wilson CI + the thesis gate (CI-low > 0.25) → `AB/results/*.json`. Pipeline validated end-to-end on the 1084/286 interface (`test_obs_identity` 5/5 encoder↔C++ parity; uniform-bridge games vs Value/AlphaBeta complete — `AB/results/validation_1084.md`).
-- [~] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ran live (2026-05-27) on the 1084 M2 seed `ppo_1084_50m`: 0/200 vs AlphaBeta** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019], gate FAIL) and 0/5 with trades. **Verified the 0 is real, not a bridge/plumbing bug (2026-05-28):** the *same model, same harness, swapping AlphaBeta→`RandomPlayer`* scores **179/200 (89.5%)**, and **95.5%** native vs random — so the bridge faithfully conveys the model's skill; a random-trained PPO genuinely cannot beat AlphaBeta. **Now blocked on a *stronger* model, not plumbing** — needs the M3 self-play output (warm-started from `ppo_1084_50m`). AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune`.
+- [~] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ran live (2026-05-27) on the 1084 M2 seed `ppo_1084_50m`: 0/200 vs AlphaBeta** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019], gate FAIL) and 0/5 with trades. **Verified the 0 is real, not a bridge/plumbing bug (2026-05-28):** the *same model, same harness, swapping AlphaBeta→`RandomPlayer`* scores **179/200 (89.5%)**, and **95.5%** native vs random — so the bridge faithfully conveys the model's skill; a random-trained PPO genuinely cannot beat AlphaBeta. **Now waiting on a *stronger* model, not plumbing** — needs the M3 self-play output (warm-started from `ppo_1084_50m`), **which is training now (§M3, IN PROGRESS 2026-05-28)**. AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune`.
 - [~] 10⁸-step soak test for stability: harness done (`AB/soak.py` — finite-obs + mask-integrity + RSS-leak checks); smoked green (10k steps, RSS flat 1.00×); full run pending (~24 min at ~70k steps/s).
 - [x] Reproducibility doc: `AB/REPRODUCIBILITY.md` (toolchain, build flags + `editable.rebuild=true`, anaconda env, catanatron git pin, seeds, training config).
 - **Thesis gate: >25% win rate vs Alpha-Beta with 95% CI** (Wilson CI lower bound > 0.25).
