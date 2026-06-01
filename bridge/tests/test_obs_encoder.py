@@ -37,14 +37,17 @@ def test_no_nan_inf(fresh_game):
 
 def test_initial_state_has_known_values(fresh_game):
     obs = encode_obs(fresh_game, Color.RED)
-    # Self block: index 0 = VP (should be 0 at start)
+    # Obs count fields are normalized by structural maxima (see obs_encoder
+    # N_* / src/catan/obs.cpp norm::). At game start settle/city/road are at
+    # their maxima, so each normalizes to exactly 1.0.
+    # Self block: index 0 = VP (0 at start, 0/10 = 0)
     assert obs[0] == 0.0
-    # Self block: index 5 = settle_left (5 at start)
-    assert obs[5] == 5.0
-    # Self block: index 6 = city_left (4 at start)
-    assert obs[6] == 4.0
-    # Self block: index 7 = road_left (15 at start)
-    assert obs[7] == 15.0
+    # Self block: index 5 = settle_left (5/5 = 1.0)
+    assert obs[5] == 1.0
+    # Self block: index 6 = city_left (4/4 = 1.0)
+    assert obs[6] == 1.0
+    # Self block: index 7 = road_left (15/15 = 1.0)
+    assert obs[7] == 1.0
     # Self block: discard_remaining (0), is_current (1 if RED's turn first)
     # Self block layout: [vp, hand, dev, knights, road_len, settle, city, road,
     #                     ports*6, discard, is_current]

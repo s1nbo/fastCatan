@@ -4,6 +4,39 @@ A walking tour of every file in this repo, grouped by concern. New
 contributors should read this top-to-bottom; everyone else can skim to
 the section they need.
 
+> ## ⚠️ THIS DOC HAS DRIFTED — corrections for future agents (2026-05-27)
+>
+> Large parts below describe files/layout that are **not in the current tree**.
+> Trust this block on any conflict:
+>
+> - **Shapes:** `OBS_SIZE = 1084`, `NUM_ACTIONS = 286`.
+> - **No `tools/` dir exists.** No `train_smoke.py`, `profile_train.py`,
+>   `c_api.cpp`, `build_*.sh`, or `tools/test_*.py`. Tests live in `sim/tests/`
+>   and `bridge/tests/`. Board viz is `visual/viz_topology.py`. Perft hashes are
+>   not currently checked in.
+> - **`python/fastcatan/` is just `__init__.py`** (re-exports the nanobind
+>   symbols: `Env`, `BatchedEnv`, `action`, shape constants). There is NO
+>   `gym_env.py`, `pettingzoo_env.py`, `tournament.py`, `alphabeta.py`, or
+>   `selfplay.py`. The single-agent Gym env is **`models/env.py`**
+>   (`FastCatanEnv`); the alpha-beta player is **`examples/alphabeta_player.py`**;
+>   the Catanatron bridge + eval live in **`bridge/`**.
+> - **No `fastcatan` shared lib / ctypes shim.** CMake builds `fastcatan_core`
+>   (static), `bench_step`, `bench_batched`, and `_fastcatan` (nanobind, gated on
+>   `SKBUILD`).
+> - **RL training** = `models/train_{ppo,a2c,dqn,muzero}.py` over `models/env.py`
+>   (single-env + SB3 `DummyVecEnv` by default), **not** a `BatchedEnv` VecEnv.
+>   See `models/PLAN.md`'s status block for PPO reality, the reward design, and
+>   the open stall-cap bug.
+> - The `bench/` section below **is** accurate (plus `bench_common.hpp`, and the
+>   Python `bench/bench_throughput.py` + `bench/bench_comprehensive.py`).
+> - **Correctness/eval lives in `bridge/`** (see `bridge/PLAN.md`): a true
+>   cross-engine differential vs Catanatron — `state_mirror` (byte-exact
+>   GameState ctypes mirror) + `state_inject` + `rng_force` +
+>   `tests/test_differential.py` + `tests/test_obs_identity.py`. It found and
+>   fixed 5 sim bugs. Obs **count fields are normalized** by structural maxima
+>   (`obs.cpp` `namespace norm`, mirrored in `bridge/obs_encoder.py` +
+>   `ui/obs_decoder.py`; `OBS_SIZE` stays 1084).
+
 ## Bird's-eye view
 
 ```
@@ -38,10 +71,9 @@ zero-copy (no pickling, no per-step copies).
 fastCatan/
 ├── README.md              project intro + quickstart
 ├── PLAN.md                thesis plan + milestone tracking
-├── HPC.md                 HPC build / SLURM setup
 ├── ARCHITECTURE.md        ← you are here
 ├── LICENSE                MIT
-├── CMakeLists.txt         build system (HPC-ready)
+├── CMakeLists.txt         build system
 ├── pyproject.toml         scikit-build-core editable install
 ├── .gitignore             ignore build outputs and caches
 ├── .clangd                clangd config for IDEs
@@ -112,10 +144,11 @@ debugging / cross-checking. The "live" mask is maintained inside
 Constants `MASK_WORDS = 5` and `NUM_ACTIONS = 286`.
 
 ### `include/obs.hpp`
-Declares `write_obs(state, board, pov, out)` — encodes a 724-element
+Declares `write_obs(state, board, pov, out)` — encodes a 1084-element
 float32 observation from a chosen player's perspective (POV-flipped
 seat indexing, so the agent always sees its own slot at index 0).
-Constant `OBS_SIZE = 724`.
+Count fields are normalized by structural maxima (`namespace norm` in
+`obs.cpp`); one-hots/flags are 0/1. Constant `OBS_SIZE = 1084`.
 
 ### `include/batched_env.hpp`
 Declares `BatchedEnv` — N envs in one contiguous buffer for hot-path
@@ -184,8 +217,31 @@ xoshiro picker. Reports steps/sec, ns/step, games/sec.
 
 ### `bench/bench_batched.cpp`
 Batched throughput. Same loop but over N envs at once. The fairest
-measure of the C++ core's ceiling on a given machine. With OpenMP on
-HPC this scales near-linearly with cores.
+measure of the C++ core's ceiling on a given machine. With OpenMP
+this scales near-linearly with cores.
+
+---
+
+## Simulator fuzz — `sim/`
+
+### `sim/fuzz_invariants.cpp`
+The 10⁷-game invariant correctness gate (PLAN.md §M1). Pure-C++,
+OpenMP-parallel: plays random-legal games and checks per-step invariants —
+resource conservation (bank + hands = 19/resource), hand-size vs resource sum,
+VP ≤ 12 & public ≤ total, settlement/city/road stock bounds (also catches
+uint8 underflow), phase/current_player ranges, non-empty mask, and a winner at
+any terminal. Mirrors the readable spec in `sim/tests/test_invariants.py` but
+runs the full sweep Python can't (~57k games/s vs ~35/core). CMake target;
+`ctest -R invariants` = 100k-game smoke, `build/fuzz_invariants <games>
+[base_seed] [max_steps]` = full gate. **Result: 0 violations over 10⁷ games /
+4.04×10¹⁰ steps.**
+
+Two rule-correct non-terminations exist (counted, never gate failures — every
+invariant still holds): heavy-tail long games, and **deadlocks** where the
+board is built out and the dev deck is exhausted so the last VP is unreachable
+for all players (max VP frozen < 10 forever). `step_one` has no no-progress
+terminal; resolved at the RL level by `models/env.py` `MAX_EPISODE_STEPS`
+(truncate → −1).
 
 ---
 
@@ -359,7 +415,7 @@ see exactly where wall time goes. Sections:
 - `ppo` — full SB3 MaskablePPO learn() loop
 - `cprofile` — function-level breakdown via cProfile
 
-Use this on HPC to decide whether to invest in a custom BatchedEnv-
+Use this to decide whether to invest in a custom BatchedEnv-
 driven PPO loop or stick with SB3.
 
 ### `tools/train_smoke.py`
@@ -431,13 +487,6 @@ The thesis-side roadmap. Five milestones (M1–M5) with dated
 deliverables, throughput targets, and risk register. Updated as
 work progresses.
 
-### `HPC.md`
-Linux/HPC build guide: module loads (GCC 14.2 + cmake 3.27 + python
-3.12 + CUDA 12.4), venv creation, `pip install`, the standalone
-bench targets, the RL training stack (`torch sb3-contrib stable-
-baselines3`), a SLURM job template, common pitfalls + fixes, and
-performance expectations per scale.
-
 ### `ARCHITECTURE.md`
 This file.
 
@@ -465,7 +514,6 @@ open them in an editor. Avoids spurious "include not found" diagnostics.
 7. **`tools/test_step1.py`** — example of how the engine is exercised
    from Python (via the ctypes shim — older but instructive).
 8. **`tools/train_smoke.py`** — the full training loop, end-to-end.
-9. **`HPC.md`** — what changes when you move from Mac/dev to HPC.
-10. **`PLAN.md`** — where the project is heading.
+9. **`PLAN.md`** — where the project is heading.
 
 Once you've read those, the rest of the repo should fit into context.

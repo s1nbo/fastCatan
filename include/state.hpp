@@ -13,6 +13,23 @@ namespace catan {
     inline constexpr uint8_t NUM_PLAYERS   = 4;
     inline constexpr uint8_t WIN_VP        = 10;
 
+    // Length backstop: end any game that reaches MAX_TURNS turns with no winner
+    // (turn_count is uint16_t, ++ per END_TURN at rules.cpp). This is the single
+    // length authority for the game; the per-turn trade-compose cap (Python
+    // ComposeCapper / FastCatanEnv) is the liveness guard that guarantees turns
+    // end, so this always fires for a non-terminating game. 2000 ~= 2x the
+    // observed random-game max of 945 turns -> ample headroom for longer
+    // strong-vs-strong self-play, so it only bites genuine non-termination.
+    inline constexpr uint16_t MAX_TURNS    = 2000;
+
+    // Per-turn player-to-player trade-compose budget. After this many
+    // compose actions (TRADE_ADD_GIVE..TRADE_OPEN) in one turn, compute_mask
+    // masks the compose block off (CANCEL/build/bank-trade/END_TURN stay
+    // legal), forcing the turn to progress. Kills the ADD->CANCEL churn stall
+    // in the simulator itself (was the Python ComposeCapper). A real offer is
+    // a few ADD_* + OPEN, so only churn ever reaches this.
+    inline constexpr uint8_t MAX_TRADE_COMPOSE_PER_TURN = 50;
+
     // node[] encoding: bits 0-1 = level, bits 2-4 = owner.
     inline constexpr uint8_t NODE_EMPTY      = 0;
     inline constexpr uint8_t NODE_SETTLEMENT = 1;
@@ -72,6 +89,7 @@ namespace catan {
         // --- Turn / phase state ---
         uint8_t  dice_roll;    // 0 if not yet rolled this turn, else 2..12
         uint16_t turn_count;
+        uint8_t  trade_compose_count; // p2p trade-compose actions this turn; caps ADD/CANCEL churn
         Phase    phase;        // INITIAL_PLACEMENT_1 / _2 / MAIN / ENDED
         Flag     flag;         // forced-action override; NONE during normal play
         uint8_t  start_player; // who began initial placement; phase 1 clockwise from here, phase 2 counter-clockwise back to here
@@ -121,6 +139,18 @@ namespace catan {
         // Updated after every step_one. Consumers read this directly instead
         // of paying for a full recompute. PLAN.md M3 deliverable.
         uint64_t action_mask[5];
+
+        // --- Longest-road component membership (one 54-bit set per player) ---
+        // Bit n set => node n is a valid longest-road path endpoint for the
+        // player. A node joins the player's set when the player builds an
+        // incident road (or settlement) while the node is NOT enemy-occupied,
+        // and is never removed thereafter. This mirrors catanatron's
+        // connected-component bookkeeping (board.py build_road/build_settlement)
+        // and is what makes a road segment terminating at an opponent building
+        // count toward longest road IFF the road was built before the opponent
+        // settled there. Without it the longest-road length diverges from
+        // catanatron (the ground-truth engine) in ~65% of random games.
+        uint64_t road_node_member[4];
     };
 
     // Just for Checking.

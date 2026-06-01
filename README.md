@@ -13,13 +13,21 @@ stepping with optional OpenMP, Gymnasium + PettingZoo wrappers.
 
 ## Throughput
 
-| Configuration | Steps/sec |
-|---|---|
-| Pure C++ batched (1024 envs, 1 thread) | ~13M |
-| Python (nanobind, step + mask) | ~19M |
-| HPC with OpenMP across 32 cores | projected ~150-300M |
+Measured with `bench/bench_throughput.py` (full per-component breakdown in
+PLAN.md M1). Single node:
 
-For comparison, M1 PLAN target was 5×10⁵; we're ~25× over.
+| Path | Steps/sec |
+|---|---|
+| Pure C++ batched `step_one` (1 thread) | ~10–50M (cache-bound; smaller batch faster) |
+| Python batched hot path (mask + policy + obs + step) | ~1M |
+| OpenMP across cores | near-linear (Linux/GCC; the macOS/clang build links no OpenMP) |
+
+Far above the M1 target (5×10⁵) and ~7× Catanatron on equal footing
+(games/s, random-vs-random). **The C++ `step_one` is not the bottleneck** — in
+the batched hot path `write_obs` (the 1084-float encode) dominates; in the
+single-env path the Python legal-action scan + interpreter glue dominate. So
+the optimization target, if ever needed, is the obs, not the simulator (for a
+GPU loop the cost shifts further to obs encode + CPU→GPU transfer).
 
 ## Quickstart
 
@@ -31,20 +39,32 @@ cd fastcatan
 python3 -m venv .venv && source .venv/bin/activate
 pip install -U pip
 pip install cmake ninja nanobind scikit-build-core    # build deps
-pip install -e . --no-build-isolation                  # builds the C++ extension
+pip install -e . --no-build-isolation --config-settings=editable.rebuild=true  # build + auto-rebuild on source edits
 pip install torch sb3-contrib stable-baselines3         # for training
+pip install -r requirements.txt                         # catanatron (pinned) for the bridge/eval path
 ```
+
+> `editable.rebuild=true` makes scikit-build-core recompile the extension on the
+> next `import fastcatan` after any C++ change. Without it, `pip install -e .`
+> builds once and the binary silently goes stale when `obs.hpp`/`mask.hpp` change
+> (see `AB/REPRODUCIBILITY.md` §5).
 
 Verify:
 
 ```bash
 python3 -c "import fastcatan as fc; print(fc.OBS_SIZE, fc.NUM_ACTIONS)"
-# 724 296
+# 1084 286
 ```
 
-### HPC
+Run the correctness gates (after `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`):
 
-See [`HPC.md`](HPC.md) — module loads, GCC 14.2 + CUDA setup, SLURM job template.
+```bash
+ctest --test-dir build -R invariants            # 100k-game invariant fuzz smoke (~2s)
+build/fuzz_invariants 10000000                  # full 10⁷-game gate (~3 min, OpenMP)
+python3 -m pytest sim/tests/ bridge/tests/ -q   # unit + cross-engine differential
+```
+
+M1 gate result: 0 invariant violations over 10⁷ games / 4.04×10¹⁰ steps (see PLAN.md §M1).
 
 ## Hello world
 
@@ -121,16 +141,17 @@ for agent in env.agent_iter():
 ### Training with MaskablePPO
 
 ```bash
-python3 tools/train_smoke.py --total-timesteps 10000 --device auto
+python3 -m models.train_ppo --num-envs 64 --total-steps 100_000
 ```
 
-See [`tools/train_smoke.py`](tools/train_smoke.py) for the full setup.
+See [`models/PLAN.md`](models/PLAN.md) for the trainers (PPO + A2C/DQN/MuZero
+references) and `models/env.py` for the single-agent Gym wrapper.
 
 ## Key concepts
 
 ### Action space
 
-Flat `Discrete(NUM_ACTIONS=296)`:
+Flat `Discrete(NUM_ACTIONS=286)`:
 
 ```
 0..53     SETTLE   build settlement at node N
@@ -162,7 +183,7 @@ All action IDs are exposed as `fastcatan.action.<NAME>`.
 
 ### Action mask
 
-Mask is a `uint64[5]` (320 bits, 296 used). Bit `i` set ⇔ action `i` is
+Mask is a `uint64[5]` (320 bits, 286 used). Bit `i` set ⇔ action `i` is
 legal. Read via `env.write_masks(buf)` (BatchedEnv) or
 `info["action_mask_packed"]` (GymEnv). For SB3-style consumers, GymEnv
 also unpacks to a `bool[NUM_ACTIONS]` in `info["action_mask"]`.
@@ -173,8 +194,12 @@ for ~21% throughput win.
 
 ### Observation
 
-`obs` is a `float32[OBS_SIZE=724]` from the current player's perspective.
+`obs` is a `float32[OBS_SIZE=1084]` from the current player's perspective.
 Fields are POV-relative (self always at slot 0, opponents at +1, +2, +3).
+Count fields (VP, hand size, resources, road length, bank, …) are **normalized**
+by structural Catan maxima (see `src/catan/obs.cpp` `namespace norm`); one-hots
+and bit flags stay 0/1. The bridge eval encoder (`bridge/obs_encoder.py`)
+mirrors these divisors exactly — `bridge/tests/test_obs_identity.py` guards it.
 
 ### Reward
 
@@ -186,8 +211,8 @@ wrapper / training loop.
 ### RNG
 
 xoshiro128++ per env, 16 bytes of state, seeded via SplitMix64 from a
-master seed. Deterministic given the seed; perft hashes pinned in
-`tools/perft_hashes.json` are guarded by CI.
+master seed. Deterministic given the seed; fixed-seed reproducibility is
+guarded by `sim/tests/test_determinism.py`.
 
 ## Repo layout
 
@@ -196,10 +221,14 @@ include/                 public headers (state, rules, mask, obs, batched_env, r
 src/catan/               core C++ implementation
 bindings/pycatan/        nanobind module
 python/fastcatan/        Python package (re-exports + Gym/PettingZoo wrappers)
-tools/                   build scripts, tests, benchmarks, training smoke
-bench/                   pure-C++ throughput benchmarks
-CMakeLists.txt           build system (HPC-ready)
+sim/tests/               Python correctness tests (invariants, scenarios, determinism, mask)
+sim/fuzz_invariants.cpp  10⁷-game C++ invariant fuzz gate (ctest -R invariants; see PLAN.md M1)
+bridge/                  Catanatron interop + cross-engine differential (see bridge/PLAN.md)
+models/                  RL trainers (PPO + A2C/DQN/MuZero) + Gym env (see models/PLAN.md)
+ui/                      obs decoder / board render / replay (see ui/PLAN.md)
+examples/                random + alpha-beta player references
+bench/                   throughput benchmarks (bench_throughput.py + C++ bench_step/bench_batched)
+CMakeLists.txt           build system
 pyproject.toml           scikit-build-core editable install
 PLAN.md                  thesis plan + milestone tracking
-HPC.md                   HPC build + SLURM setup
 ```

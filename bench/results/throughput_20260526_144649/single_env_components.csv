@@ -1,0 +1,9 @@
+component,ns_per_call,us_per_call,on_baseline_path,pct_of_per_step
+env.step  (dispatch + C++ step_one: rules+mask+rng),123.2,0.1232,True,10.8
+mask bit-scan  legal_actions() [Python],413.3,0.4133,True,36.2
+env.action_mask  (dispatch + memcpy),92.8,0.0928,True,8.1
+policy  rng.choice() [Python],110.6,0.1106,True,9.7
+"interpreter glue  (loop/branch/alloc, residual)",401.1,0.4011,True,35.2
+env.write_obs  (dispatch + encode) [RL-path only],176.5,0.1765,False,
+nanobind dispatch floor  (env.current_player),23.0,0.023,False,
+Python loop noise floor,6.3,0.0063,False,

@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-28T02:25:53",
+  "ckpt": "models/checkpoints/ppo_1084_50m/ppo_final.zip",
+  "algo": "ppo",
+  "deterministic": false,
+  "enable_trades": false,
+  "opponent": "random",
+  "ab_depth": null,
+  "ab_prune": null,
+  "seed": 42,
+  "pythonhashseed": "0",
+  "games": 200,
+  "decided": 200,
+  "no_winner": 0,
+  "bridge_wins": 179,
+  "win_rate": 0.895,
+  "ci95_low": 0.8448186177864638,
+  "ci95_high": 0.9302930375380627,
+  "gate_baseline": 0.25,
+  "gate_pass": true,
+  "seat_wins": {
+    "RED": 179,
+    "BLUE": 3,
+    "ORANGE": 11,
+    "WHITE": 7
+  },
+  "elapsed_s": 14.117432209999947,
+  "s_per_game": 0.07058716104999974
+}
