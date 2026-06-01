@@ -14,10 +14,8 @@ import numpy as np
 import fastcatan
 
 from models.env import (
-    ComposeCapper,
     FastCatanEnv,
     LEARNER_SEAT,
-    MAX_TRADE_COMPOSE_PER_TURN,
     NUM_ACTIONS,
     _unpack_mask,
 )
@@ -58,15 +56,11 @@ class SelfPlayEnv(FastCatanEnv):
 
     def __init__(
         self, pool: OpponentPool, seed: int = 0, suppress_p2p_trade: bool = False,
-        trade_compose_cap: int = MAX_TRADE_COMPOSE_PER_TURN,
     ):
-        super().__init__(seed=seed, trade_compose_cap=trade_compose_cap)
+        super().__init__(seed=seed)
         self._pool = pool
         self._seat_opp: dict[int, Opponent] = {}
         self._p2p_bool = _p2p_trade_mask_bool() if suppress_p2p_trade else None
-        # Per-seat cap for the opponent seats (the learner is capped by the base
-        # FastCatanEnv). Without it, a frozen trade-happy opponent stalls the game.
-        self._capper = ComposeCapper(trade_compose_cap)
 
     def _apply_filter(self, mask_bool: np.ndarray) -> np.ndarray:
         """Forbid p2p trade if configured; never strand a seat with no legal move."""
@@ -83,7 +77,6 @@ class SelfPlayEnv(FastCatanEnv):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         # Re-sample the seat->opponent map before the base reset steps opponents.
         self._seat_opp = self._pool.sample()
-        self._capper.reset()
         return super().reset(seed=seed, options=options)
 
     def step(
@@ -108,14 +101,12 @@ class SelfPlayEnv(FastCatanEnv):
             seat = self._env.current_player
             self._env.action_mask(self._mask_buf)
             mask_bool = self._apply_filter(_unpack_mask(self._mask_buf))
-            mask_bool = self._capper.filter(seat, mask_bool)
             if not mask_bool.any():
                 # No legal actions — should not happen; treat as terminal.
                 return True, self._terminal_reward()
             self._env.write_obs(seat, self._obs_buf)
             opp = self._seat_opp.get(seat, self._pool.random_opponent)
             action = int(opp.act(self._obs_buf.copy(), mask_bool))
-            self._capper.update(seat, action)
             _, done = self._env.step(action)
             if done:
                 return True, self._terminal_reward()

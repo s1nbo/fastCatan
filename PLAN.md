@@ -320,10 +320,22 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
   build — run in anaconda). **Curriculum: random-first (M2)
   → warm-start self-play** is the right order — sparse ±1 reward can't cold-start against
   strong opponents; keep `p_random` > 0 throughout. All M3 code reads `OBS_SIZE`/
-  `NUM_ACTIONS` dynamically, so it runs unchanged on 1084. **This is the thesis critical
-  path**: M4 confirmed a random-trained agent scores 0 vs AlphaBeta (§M4); self-play is the
-  only route to the >25% gate.
+  `NUM_ACTIONS` dynamically, so it runs unchanged on 1084. **This was believed to be the
+  thesis critical path**: M4 confirmed a random-trained agent scores 0 vs AlphaBeta (§M4),
+  so self-play was assumed to be the route to the >25% gate — **⚠️ but as of 2026-06-01
+  this is FALSIFIED for the pure policy-gradient recipe: see the M3-result + M4 bullets below.**
 - **Gate: latest model beats N-step-ago snapshot >55% (balanced 2-vs-2, neutral 0.50, conclusive).**
+- [x] ✅ **M3 self-play gate MET, trades ON** (2026-05-30): full 12-cell sweep on the
+  turn-cap env = 12/12 conclusive, 0.000 no-winner everywhere, 6/12 cells pass >0.55 (best
+  256,256/ent0.01/const 0.825). Both stall caps now live in the **C++ core**
+  (`MAX_TURNS=2000` + `MAX_TRADE_COMPOSE_PER_TURN=50`; the Python ComposeCapper + every
+  `--trade-compose-cap` arg were deleted). Detail in `models/selfplay/PLAN.md`.
+- [x] ⚠️ **At-scale league run shows self-play does NOT transfer to AlphaBeta** (2026-06-01):
+  `sp_league_200m_512` — 512×512×256, **200M steps**, `--league` PFSP-hard, trades ON,
+  warm-started from `ppo_512x512x256_50m` (93% vs-random). League gate r3 = **0.66 PASS**
+  (genuinely beats its 100M-ago self) and **86.7% vs-random**, yet **0/200 vs AlphaBeta**
+  (§M4) — identical to the pre-self-play seed. The self-play improvement is **real but
+  orthogonal to minimax**. **Do NOT chase this with more steps (200M→0 movement).**
 
 ### M4 — Alpha-Beta Eval + Final Model
 
@@ -333,7 +345,8 @@ plays any seat on that seat's POV obs — opponents are driven from Python, exac
 > `requirements.txt`, `AB/REPRODUCIBILITY.md` §6), not PyPI.
 
 - [x] Tournament harness (`AB/tournament.py` + `AB/policy.py`): policy-via-bridge vs `AlphaBetaPlayer`/`ValueFunctionPlayer`/`RandomPlayer`, win rate + 95% Wilson CI + the thesis gate (CI-low > 0.25) → `AB/results/*.json`. Pipeline validated end-to-end on the 1084/286 interface (`test_obs_identity` 5/5 encoder↔C++ parity; uniform-bridge games vs Value/AlphaBeta complete — `AB/results/validation_1084.md`).
-- [~] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ran live (2026-05-27) on the 1084 M2 seed `ppo_1084_50m`: 0/200 vs AlphaBeta** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019], gate FAIL) and 0/5 with trades. **Verified the 0 is real, not a bridge/plumbing bug (2026-05-28):** the *same model, same harness, swapping AlphaBeta→`RandomPlayer`* scores **179/200 (89.5%)**, and **95.5%** native vs random — so the bridge faithfully conveys the model's skill; a random-trained PPO genuinely cannot beat AlphaBeta. **Now waiting on a *stronger* model, not plumbing** — needs the M3 self-play output (warm-started from `ppo_1084_50m`), **which is training now (§M3, IN PROGRESS 2026-05-28)**. AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune`.
+- [~] Final model vs Alpha-Beta over ≥1000 four-player games. **Harness ran live (2026-05-27) on the 1084 M2 seed `ppo_1084_50m`: 0/200 vs AlphaBeta** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019], gate FAIL) and 0/5 with trades. **Verified the 0 is real, not a bridge/plumbing bug (2026-05-28):** the *same model, same harness, swapping AlphaBeta→`RandomPlayer`* scores **179/200 (89.5%)**, and **95.5%** native vs random — so the bridge faithfully conveys the model's skill; a random-trained PPO genuinely cannot beat AlphaBeta. AlphaBeta ≈6.4 s/game unpruned (~1.8 h/1000); use `--ab-prune` (~1.4 s/game).
+- [~] ⚠️ **Re-test on the M3 self-play model (2026-06-01): STILL 0/200 vs AlphaBeta.** The stronger model now exists — `sp_league_200m_512/selfplay_final.zip` (200M-step league self-play off the 512×512×256 seed, league gate r3=0.66 PASS, 86.7% vs-random) — and it scored **0/200** (depth 2, `--ab-prune`, `--no-trades`, CI [0, 0.019]; `AB/results/tournament_ppo_alphabeta_20260601_100313.json`), the same as the seed. **So "train a stronger PPO via self-play" did NOT crack the gate** — the gains don't transfer to minimax play. **The open path to >25% is no longer "more self-play":** (1) diagnose the 0 first — same model vs the weaker `ValueFunctionPlayer` (`--opponent value`) + earlier snapshots vs AlphaBeta, to confirm a real skill wall vs a bridge-seat artifact; (2) put AlphaBeta/ValueFunction bots **into the self-play opponent pool** (it's currently PPO-snapshots only, so the agent never trains against lookahead); (3) add **MCTS/AlphaZero-style search at inference** (the policy net as a prior) — the standard way pure policies beat minimax. See `models/selfplay/PLAN.md` + memory `m4-alphabeta-blocked-on-m3`.
 - [~] 10⁸-step soak test for stability: harness done (`AB/soak.py` — finite-obs + mask-integrity + RSS-leak checks); smoked green (10k steps, RSS flat 1.00×); full run pending (~24 min at ~70k steps/s).
 - [x] Reproducibility doc: `AB/REPRODUCIBILITY.md` (toolchain, build flags + `editable.rebuild=true`, anaconda env, catanatron git pin, seeds, training config).
 - **Thesis gate: >25% win rate vs Alpha-Beta with 95% CI** (Wilson CI lower bound > 0.25).
