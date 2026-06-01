@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-06-01T10:03:13",
+  "ckpt": "models/checkpoints/sp_league_200m_512/selfplay_final.zip",
+  "algo": "ppo",
+  "deterministic": false,
+  "enable_trades": false,
+  "opponent": "alphabeta",
+  "ab_depth": 2,
+  "ab_prune": true,
+  "seed": 42,
+  "pythonhashseed": "0",
+  "games": 200,
+  "decided": 200,
+  "no_winner": 0,
+  "bridge_wins": 0,
+  "win_rate": 0.0,
+  "ci95_low": 0.0,
+  "ci95_high": 0.018846005918320894,
+  "gate_baseline": 0.25,
+  "gate_pass": false,
+  "seat_wins": {
+    "RED": 0,
+    "BLUE": 60,
+    "ORANGE": 70,
+    "WHITE": 70
+  },
+  "elapsed_s": 273.5852343129809,
+  "s_per_game": 1.3679261715649045
+}

@@ -29,7 +29,6 @@ import numpy as np
 
 import fastcatan
 
-from models.env import ComposeCapper, MAX_TRADE_COMPOSE_PER_TURN
 from models.eval import wilson_ci
 from models.selfplay.eval_seats import play_one
 from models.selfplay.opponents import Opponent, PolicyOpponent
@@ -43,14 +42,12 @@ def play_2v2(
     seed: int = 0,
     max_steps: int = 150000,  # should-never-fire backstop; C++ MAX_TURNS is the real length cap
     suppress_p2p: bool = False,
-    trade_compose_cap: int = MAX_TRADE_COMPOSE_PER_TURN,
 ) -> tuple[int, int, int]:
     """Balanced 2-vs-2, seat assignment rotated per game. Neutral (latest==nago)
     = 0.50. Returns (latest_wins, decided, no_winner); decided excludes stalls."""
     env = fastcatan.Env()
     seed_seq = random.Random(seed)
     p2p = _p2p_trade_mask_bool() if suppress_p2p else None
-    capper = ComposeCapper(trade_compose_cap)
     obs_buf = np.zeros(fastcatan.OBS_SIZE, dtype=np.float32)
     mask_buf = np.zeros(fastcatan.MASK_WORDS, dtype=np.uint64)
 
@@ -65,8 +62,7 @@ def play_2v2(
             seat_policies = [nago, latest, nago, latest]
             latest_seats = (1, 3)
         env.reset(seed_seq.getrandbits(64))
-        capper.reset()
-        winner = play_one(env, seat_policies, obs_buf, mask_buf, p2p, max_steps, capper)
+        winner = play_one(env, seat_policies, obs_buf, mask_buf, p2p, max_steps)
         if winner < 0:
             no_winner += 1
         elif winner in latest_seats:
@@ -117,11 +113,6 @@ def main() -> None:
     p.add_argument("--no-p2p-trade", action="store_true",
                    help="Forbid p2p trades (kills the trade-loop stall so games "
                         "terminate). Use the SAME setting training used.")
-    p.add_argument("--trade-compose-cap", type=int,
-                   default=MAX_TRADE_COMPOSE_PER_TURN,
-                   help="Per-seat trade-compose actions/turn before the compose "
-                        "block is masked. Lets trades-ON games terminate without "
-                        "--no-p2p-trade. Match training's value.")
     args = p.parse_args()
 
     a = PolicyOpponent.load(Path(args.latest), name="latest")
@@ -129,7 +120,7 @@ def main() -> None:
 
     latest_wins, decided, no_winner = play_2v2(
         a, b, args.games, seed=args.seed, max_steps=args.max_steps,
-        suppress_p2p=args.no_p2p_trade, trade_compose_cap=args.trade_compose_cap,
+        suppress_p2p=args.no_p2p_trade,
     )
     r = gate_result(latest_wins, decided, no_winner, args.threshold)
 

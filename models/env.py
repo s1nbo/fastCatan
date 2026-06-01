@@ -34,31 +34,19 @@ WIN_VP = 10
 TIE_REWARD = -2.0
 
 # --- Stall control -------------------------------------------------------
-# The dominant stall is a within-turn trade-compose loop: ADD_WANT is legal
-# whenever trade_want[r] < 19 and CANCEL whenever the scratch is non-empty
-# (rules.cpp:1491-1504), so ADD_WANT -> CANCEL -> ADD_WANT churns forever
-# WITHOUT ever opening a trade or ending the turn. turn_count only advances on
-# END_TURN (rules.cpp:540), so it stays frozen and a turn_count cap never fires.
+# The dominant within-turn stall is the trade-compose loop: ADD_WANT is legal
+# whenever trade_want[r] < 19 and CANCEL whenever the scratch is non-empty, so
+# ADD_WANT -> CANCEL -> ADD_WANT churns forever WITHOUT ever opening a trade or
+# ending the turn (turn_count only advances on END_TURN, so it stays frozen and a
+# turn_count cap never fires).
 #
-# Primary fix: bound trade-compose actions per turn at the mask level
-# (action_masks). After MAX_TRADE_COMPOSE_PER_TURN of them the compose bits are
-# masked off, forcing build / bank-trade / END_TURN. Compose actions are the
-# contiguous block ADD_GIVE_BASE..TRADE_OPEN. CANCEL/ACCEPT/DECLINE/CONFIRM stay
-# legal (CANCEL is the always-available escape from a pending trade, so the mask
-# can never be emptied; and without re-composing the loop can't restart). Bank
-# trades (TRADE_BASE) are excluded — they consume resources and self-limit.
-# This is the LIVENESS guard, NOT the length cap: a bounded compose budget forces
-# every turn to eventually build / bank-trade / END_TURN, so turn_count advances
-# and the C++ MAX_TURNS length cap (state.hpp) can fire. History: 20 was decidable
-# but suppressed real trading; 40 made the gate WORSE in a validation sweep (mean
-# 0.93 no-winner) — under a *step*-based length cap, a looser compose budget
-# inflates steps/turn and the step cap guillotines games before they reach the
-# ~300-900 turns needed to win. The fix was moving the length authority to TURNS
-# (C++ MAX_TURNS); with that, compose looseness no longer hurts decidability, so
-# the cap is 50 to preserve genuine multi-step trades.
-_A = fastcatan.action
-TRADE_COMPOSE_IDS = np.arange(_A.TRADE_ADD_GIVE_BASE, _A.TRADE_OPEN + 1, dtype=np.intp)
-MAX_TRADE_COMPOSE_PER_TURN = 50
+# This LIVENESS guard now lives in the C++ core (catan::MAX_TRADE_COMPOSE_PER_TURN,
+# state.hpp): after that many compose actions in a turn, compute_mask masks the
+# compose block off (CANCEL/build/bank-trade/END_TURN stay legal), forcing the
+# turn to progress so turn_count advances and the C++ MAX_TURNS length cap can
+# fire. The simulator applies it uniformly to every seat, so train, self-play
+# opponents, gate and eval all get it for free with no per-driver bookkeeping.
+# (Was the Python ComposeCapper; removed once moved into the sim.)
 
 # Demoted to a should-never-fire backstop: the C++ MAX_TURNS cap (state.hpp) is now
 # the single length authority. Counted in *learner steps* (calls to step()). A
@@ -68,49 +56,6 @@ MAX_TRADE_COMPOSE_PER_TURN = 50
 # hypothetical frozen-turn_count bug. No-winner here still costs TIE_REWARD (-2).
 # (random-policy learner finishes <=~2100 steps.)
 MAX_EPISODE_STEPS = 40000
-
-
-class ComposeCapper:
-    """Per-seat trade-compose cap for the raw-env drive loops.
-
-    FastCatanEnv caps the *learner's* compose churn in action_masks() (via
-    self._compose_count). But the self-play opponent loop
-    (selfplay_env._step_opponents) and the gate/eval driver (eval_seats.play_one)
-    step ALL four seats through a bare fastcatan.Env with no FastCatanEnv wrapper,
-    so they get no cap — and a frozen opponent that churns ADD_WANT->CANCEL never
-    ends its turn, stalling the whole game to no-winner. This applies the SAME cap
-    keyed by seat: reset a seat's budget on its ROLL/END_TURN, count its compose
-    actions (ADD_GIVE_BASE..TRADE_OPEN), and once it spends `cap` of them mask the
-    compose block off (CANCEL/build/END_TURN stay legal, so the mask is never
-    emptied and, without re-composing, the churn can't restart). A legitimate
-    offer is a handful of ADD_* + OPEN, so only churn ever reaches the cap.
-    """
-
-    def __init__(self, cap: int = MAX_TRADE_COMPOSE_PER_TURN):
-        self.cap = cap
-        self._count = [0] * fastcatan.NUM_PLAYERS
-
-    def reset(self) -> None:
-        """Clear every seat's budget — call once per game (each env.reset)."""
-        self._count = [0] * fastcatan.NUM_PLAYERS
-
-    def filter(self, seat: int, mask_bool: np.ndarray) -> np.ndarray:
-        """Gate the compose block for `seat` once it has spent its budget.
-        Never returns an all-False mask (falls back to the unfiltered one)."""
-        if self._count[seat] >= self.cap:
-            gated = mask_bool.copy()
-            gated[TRADE_COMPOSE_IDS] = False
-            if gated.any():
-                return gated
-        return mask_bool
-
-    def update(self, seat: int, action: int) -> None:
-        """Account `seat`'s chosen action: reset on its turn boundary, else count
-        compose actions. Mirrors FastCatanEnv.step's learner-side bookkeeping."""
-        if action == _A.ROLL_DICE or action == _A.END_TURN:
-            self._count[seat] = 0
-        elif _A.TRADE_ADD_GIVE_BASE <= action <= _A.TRADE_OPEN:
-            self._count[seat] += 1
 
 
 def _unpack_mask(mask_words: np.ndarray) -> np.ndarray:
@@ -147,17 +92,14 @@ class FastCatanEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, seed: int = 0,
-                 trade_compose_cap: int = MAX_TRADE_COMPOSE_PER_TURN):
+    def __init__(self, seed: int = 0):
         super().__init__()
         self._env = fastcatan.Env()
-        self._compose_cap = trade_compose_cap
         self._seed_seq = random.Random(seed)
         self._rng = random.Random(seed ^ 0xC0FFEE)
         self._obs_buf = np.zeros(OBS_SIZE, dtype=np.float32)
         self._mask_buf = np.zeros(MASK_WORDS, dtype=np.uint64)
         self._ep_steps = 0
-        self._compose_count = 0  # trade-compose actions in the current turn
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32
@@ -213,7 +155,6 @@ class FastCatanEnv(gym.Env):
         game_seed = self._seed_seq.getrandbits(64)
         self._env.reset(game_seed)
         self._ep_steps = 0
-        self._compose_count = 0
 
         done, term_r = self._step_opponents()
         if done:
@@ -227,13 +168,9 @@ class FastCatanEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         action = int(action)
         self._ep_steps += 1
-        # Reset the per-turn compose budget at each turn boundary (ROLL starts
-        # the learner's action phase; END_TURN closes it). Count compose actions
-        # so action_masks() can gate them once the budget is spent.
-        if action == _A.ROLL_DICE or action == _A.END_TURN:
-            self._compose_count = 0
-        elif _A.TRADE_ADD_GIVE_BASE <= action <= _A.TRADE_OPEN:
-            self._compose_count += 1
+        # The per-turn trade-compose cap (liveness guard) is enforced by the C++
+        # core's mask (catan::MAX_TRADE_COMPOSE_PER_TURN), so no Python bookkeeping
+        # is needed here.
         _, done = self._env.step(action)
         if done:
             return self._read_obs(), self._terminal_reward(), True, False, {}
@@ -252,15 +189,9 @@ class FastCatanEnv(gym.Env):
     # --- MaskablePPO hook ---
 
     def action_masks(self) -> np.ndarray:
-        mask = _unpack_mask(self._read_mask())
-        if self._compose_count >= self._compose_cap:
-            gated = mask.copy()
-            gated[TRADE_COMPOSE_IDS] = False
-            # Only apply if a non-trade alternative remains, so we never hand
-            # MaskablePPO an all-False mask (e.g. a forced trade-resolution state).
-            if gated.any():
-                mask = gated
-        return mask
+        # The compose cap is baked into the C++ mask, so this is a straight
+        # read of the legal-action mask — no Python-side gating.
+        return _unpack_mask(self._read_mask())
 
 
 def make_env(seed: int = 0):

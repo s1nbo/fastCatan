@@ -6,7 +6,8 @@
 #   2. warm-started self-play sweep over lr x ent x sched x ARCH, with p2p trades
 #      ON. Stall control (validated 2026-05-29): the C++ MAX_TURNS=2000 length cap
 #      (state.hpp) is the decidability fix; the per-seat trade-compose LIVENESS cap
-#      (CAP, forces turns to end so turn_count advances) + -2 tie reward are the
+#      (catan::MAX_TRADE_COMPOSE_PER_TURN, forces turns to end so turn_count advances)
+#      + -2 tie reward are the
 #      supporting pieces. The old step-based length cap (5000) guillotined
 #      trade-heavy games (which need 7k-61k steps) -> 50-100% no-winner; moving the
 #      length authority to turns fixed it (smoke: 0% no-winner on the worst cells).
@@ -23,7 +24,6 @@ SEED_DIR=models/checkpoints/seeds
 SEED_STEPS=50000000        # match the existing 64,64 seed (ppo_1084_50m) => fair
 SEED_ENVS=768
 ARCHES=("64,64" "128,128" "256,256")   # drop 256,256 to ~halve the sweep
-CAP=50                     # per-seat trade-compose LIVENESS cap (C++ MAX_TURNS is the length authority)
 OUT=models/checkpoints/arch_sweep
 mkdir -p "$OUT"
 
@@ -43,7 +43,7 @@ done
 
 # --- 2. warm-started self-play sweep, trades ON, per-arch seeds ----------
 $PY -m models.selfplay.sweep \
-  --init-dir "$SEED_DIR" --seed-pool --trade-compose-cap "$CAP" \
+  --init-dir "$SEED_DIR" --seed-pool \
   --lr 3e-4 --ent-coef 0.0 0.01 \
   --steps-per-round 1000000 \
   --net-arch "${ARCHES[@]}" \

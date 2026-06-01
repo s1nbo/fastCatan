@@ -27,3 +27,12 @@ _deps/
 *~
 .cache/
 
+# Large trained checkpoints kept locally but not pushed (multi-GB; regenerable
+# from the training scripts). Tournament result JSONs + sweep tables stay tracked.
+# Exception: keep the FINAL model of each run tracked (~27M/23M) so smoke tests
+# can load+run a real checkpoint on other devices. (! negation un-ignores them;
+# the dir line must NOT have a trailing slash for the negation to apply.)
+models/checkpoints/ppo_512x512x256_50m/*
+!models/checkpoints/ppo_512x512x256_50m/ppo_final.zip
+models/checkpoints/sp_league_200m_512/*
+!models/checkpoints/sp_league_200m_512/selfplay_final.zip

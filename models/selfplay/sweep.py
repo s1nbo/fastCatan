@@ -57,10 +57,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-p2p-trade", action="store_true",
                    help="Forbid p2p trades (train+gate) so gates are conclusive; "
                         "without it self-play games stall and gates are undecidable.")
-    p.add_argument("--trade-compose-cap", type=int, default=None,
-                   help="Per-seat trade-compose cap/turn, forwarded to every cell. "
-                        "Lets trades stay ON without the stall (alternative to "
-                        "--no-p2p-trade). Omit = train_selfplay default (20).")
     p.add_argument("--num-rounds", type=int, default=8)
     p.add_argument("--num-envs", type=int, default=8)
     p.add_argument("--gate-lag", type=int, default=2)
@@ -120,8 +116,6 @@ def main() -> None:
             cmd += ["--seed-pool"]
         if args.no_p2p_trade:
             cmd += ["--no-p2p-trade"]
-        if args.trade_compose_cap is not None:
-            cmd += ["--trade-compose-cap", str(args.trade_compose_cap)]
 
         print(f"\n[sweep] cell {i + 1}/{len(grid)}: {run_name}")
         if args.dry_run:

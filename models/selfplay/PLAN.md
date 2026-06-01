@@ -258,5 +258,39 @@ Findings:
       Best: 256,256 ent0.01 constant **0.825**, then 256,256 ent0.01 linear 0.765,
       128,128 ent0.01 linear 0.755. Pattern: ent0.01 >> ent0 (all top-3 are
       ent0.01; ent0 collapses, esp. on 256,256); 64,64 weakest (1/4 pass).
-- **artifacts:** smoke ckpts in `checkpoints/sp_smoke_{1m,5m}/` (~16 MB, untracked —
-  `checkpoints/` has no .gitignore rule yet; scratch, safe to delete).
+- [x] **compose cap moved into the C++ core** (2026-05-30). Both caps now live in
+      the simulator: `MAX_TURNS=2000` (length) AND `MAX_TRADE_COMPOSE_PER_TURN=50`
+      (liveness) in `include/state.hpp`, enforced in `rules.cpp` (`step_one`
+      bookkeeping + `recompute_full` mask gating). The Python `ComposeCapper` class
+      and every `--trade-compose-cap` / `trade_compose_cap` arg were DELETED from
+      env.py / selfplay_env.py / eval_seats.py / gate.py / train_selfplay.py /
+      sweep.py / run_arch_sweep.sh — the sim applies the cap uniformly to all seats,
+      so train/gate/eval get it for free. Verified: build clean (sizeof GameState
+      still 384, field reused padding), 1000 random games 0 no-winner, gate+mirror
+      smoke 400 games 0 no-winner. See memory `selfplay-throughput-ceiling` /
+      `cap-simplification-plan`.
+- [x] **first at-scale league run: `sp_league_200m_512`** (2026-05-31→06-01).
+      512×512×256 net (the bigger arch, warm-started from `ppo_512x512x256_50m`,
+      itself 93% vs-random at 50M), `--league` PFSP-hard β2 decay0.9, trades ON,
+      8 envs, 4 rounds × 50M = 200M steps, ~1715 fps (~28h). League gates:
+      r2(150M v 50M)=0.550 tie, **r3(200M v 100M)=0.660 PASS** (still improving,
+      0% no-winner both rounds). Final vs-random = 86.7% (down from 93% seed =
+      expected specialization). **Throughput note: self-play is ~17× slower than
+      vs-random (3 opponent fwd-passes/step on CPU) and does NOT scale with
+      num_envs (DummyVecEnv steps sequentially) — 8 envs is the peak; 1B ≈ 6.7 days.**
+- [x] ⚠️ **M4 re-test on the 200M self-play model: STILL 0/200 vs AlphaBeta**
+      (2026-06-01, depth2 prune --no-trades, `AB/results/tournament_ppo_alphabeta_
+      20260601_100313.json`). Despite the league gate PASS + 86.7% vs-random, the
+      self-play model wins **0 of 200** vs AlphaBeta — identical to the pre-self-play
+      seed. **The "M3 self-play → beats AlphaBeta" hypothesis is FALSIFIED for this
+      recipe.** Self-play gains are real but orthogonal to minimax: beating PPO
+      copies of yourself ≠ beating depth-2 lookahead. **Do NOT just run more
+      self-play steps (200M→0 movement). Next levers: (1) cheap diagnostics — same
+      model vs the weaker `value` bot + snapshots vs AlphaBeta, to confirm it's a
+      real wall not a bridge artifact; (2) put AlphaBeta/value bots INTO the
+      opponent pool (currently PPO-snapshots only); (3) MCTS/AlphaZero search at
+      inference (policy net as prior).** See memory `m4-alphabeta-blocked-on-m3` +
+      `selfplay-200m-league-run`.
+- **artifacts:** `checkpoints/sp_league_200m_512/` (200M run: 4 snaps +
+  selfplay_final.zip + gate_log.jsonl + league_state.json). Older smoke ckpts in
+  `checkpoints/sp_smoke_{1m,5m}/` (untracked scratch, safe to delete).
