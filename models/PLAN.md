@@ -6,8 +6,10 @@
 > match the code.** What is actually true:
 >
 > - **Env is single-env, not a BatchedEnv VecEnv.** `env.py` = `FastCatanEnv`
->   (one `fastcatan.Env`, learner=seat 0, seats 1-3 random, stepped *inside*
->   `step()`). §1's `FastCatanVecEnv` over `BatchedEnv` was never built.
+>   (one `fastcatan.Env`, learner=seat 0, seats 1-3 random **by default** — now
+>   pluggable via `opponent=` / `--opponent alphabeta`, see the AlphaBeta bullet
+>   below — stepped *inside* `step()`). §1's `FastCatanVecEnv` over `BatchedEnv`
+>   was never built.
 > - **`train_ppo.py` vectorizes via SB3.** Default is now **`DummyVecEnv`**
 >   (`--subproc` to opt into SubprocVecEnv). DummyVecEnv is ~1.45× faster here
 >   because the C++ sim is so cheap that per-step IPC pickling dominates.
@@ -109,7 +111,7 @@ Project enters **M2** (PLAN.md:193). Need first RL agent. Targets:
 ```
 models/
 ├── PLAN.md              (this file)
-├── env.py               Gymnasium env wrapping single fastcatan.Env (POV=seat0, opponents=random)
+├── env.py               Gymnasium env wrapping single fastcatan.Env (POV=seat0, opponent=random|alphabeta)
 ├── train_ppo.py         PPO (SB3 MaskablePPO)        — clipped surrogate, baseline
 ├── train_a2c.py         A2C (custom, ~200 lines)     — simplest actor-critic w/ mask
 ├── train_dqn.py         DQN/Q-Learning (custom)      — Q-net + target net + replay + eps-greedy
