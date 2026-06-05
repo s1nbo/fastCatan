@@ -28,7 +28,7 @@ import torch
 import fastcatan
 
 from models.alphazero.mcts import (
-    _unpack, p2p_trade_mask, filter_p2p, Node,
+    _unpack, p2p_trade_mask, p2p_banned_words, filter_p2p, Node,
     OBS_SIZE, NUM_ACTIONS, MASK_WORDS, NUM_PLAYERS, WIN_VP,
 )
 from models.alphazero.evaluate import make_alphabeta_pick
@@ -61,7 +61,9 @@ class MCTSvsFixed:
         self._np_rng = np.random.default_rng(seed ^ 0x71FED)
         self._p2p = p2p_trade_mask() if suppress_p2p else None
         self.value_mode = value_mode
-        self.opp = make_alphabeta_pick(self.rng, ab_depth, ab_prune)
+        self.opp = make_alphabeta_pick(
+            self.rng, ab_depth, ab_prune,
+            banned=p2p_banned_words() if suppress_p2p else None)
 
         self.env = fastcatan.Env()
         self._mask_buf = np.zeros(MASK_WORDS, dtype=np.uint64)

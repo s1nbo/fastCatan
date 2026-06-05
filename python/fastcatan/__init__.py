@@ -11,6 +11,9 @@ from ._fastcatan import (  # noqa: F401
     NUM_EDGES,
     NUM_HEXES,
     NUM_PORTS,
+    SNAPSHOT_BYTES,
+    SIG_INTS,
+    SKIP_ACTION,
     action,
 )
 
@@ -25,6 +28,9 @@ __all__ = [
     "NUM_EDGES",
     "NUM_HEXES",
     "NUM_PORTS",
+    "SNAPSHOT_BYTES",
+    "SIG_INTS",
+    "SKIP_ACTION",
     "action",
 ]
 

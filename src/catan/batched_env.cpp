@@ -120,4 +120,93 @@ void batched_env_write_masks(const BatchedEnv& env, uint64_t* out) noexcept {
     }
 }
 
+// --- Batched tree-search primitives (see batched_env.hpp) ---
+
+void batched_env_save(const BatchedEnv& env, uint8_t* out) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i) {
+        uint8_t* row = out + std::size_t(i) * SNAPSHOT_BYTES;
+        std::memcpy(row, &env.states[i], sizeof(GameState));
+        std::memcpy(row + sizeof(GameState), &env.layouts[i], sizeof(BoardLayout));
+    }
+}
+
+void batched_env_load(BatchedEnv& env, const uint8_t* buf) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i) {
+        const uint8_t* row = buf + std::size_t(i) * SNAPSHOT_BYTES;
+        std::memcpy(&env.states[i], row, sizeof(GameState));
+        std::memcpy(&env.layouts[i], row + sizeof(GameState), sizeof(BoardLayout));
+    }
+}
+
+void batched_env_reseed(BatchedEnv& env, const uint64_t* seeds) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i)
+        xoshiro_seed(env.states[i].rng, seeds[i]);
+}
+
+void batched_env_step_raw(BatchedEnv& env, const uint32_t* actions,
+                          float* rewards_out, uint8_t* dones_out) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i) {
+        if (actions[i] == SKIP_ACTION) {
+            rewards_out[i] = 0.0f;
+            dones_out[i]   = 0;
+            continue;
+        }
+        float reward = 0.0f;
+        uint8_t done = 0;
+        step_one(env.states[i], env.layouts[i], actions[i], reward, done);
+        rewards_out[i] = reward;
+        dones_out[i]   = done;
+        // No auto-reset and no seed_counter advance: a search must be able
+        // to read the terminal state and keep its other branches intact.
+    }
+}
+
+void batched_env_write_obs_pov(const BatchedEnv& env, const uint8_t* povs,
+                               float* out) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i)
+        write_obs(env.states[i], env.layouts[i], povs[i],
+                  out + std::size_t(i) * OBS_SIZE);
+}
+
+void batched_env_write_obs_all4(const BatchedEnv& env, float* out) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i)
+        for (uint8_t pov = 0; pov < 4; ++pov)
+            write_obs(env.states[i], env.layouts[i], pov,
+                      out + (std::size_t(i) * 4 + pov) * OBS_SIZE);
+}
+
+void batched_env_write_sigs(const BatchedEnv& env, int32_t* out) noexcept {
+#if FCATAN_HAVE_OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t i = 0; i < int32_t(env.n); ++i) {
+        const GameState& s = env.states[i];
+        int32_t* row = out + std::size_t(i) * SIG_INTS;
+        row[0] = s.current_player;
+        row[1] = int32_t(s.phase);
+        row[2] = int32_t(s.flag);
+        row[3] = s.dice_roll;
+        for (int p = 0; p < 4; ++p) row[4 + p] = s.player_handsize[p];
+        for (int p = 0; p < 4; ++p) row[8 + p] = s.player_vp[p];
+    }
+}
+
 }  // namespace catan

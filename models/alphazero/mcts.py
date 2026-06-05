@@ -76,6 +76,19 @@ def p2p_trade_mask() -> np.ndarray:
     return m
 
 
+def p2p_banned_words() -> np.ndarray:
+    """p2p_trade_mask packed to uint64[MASK_WORDS] — the ``banned_mask`` arg
+    for ``Env.ab_decide``, keeping the native AB's WHOLE search inside the
+    trade-suppressed action space. Closes the random-fallback hole (an
+    out-of-set root pick used to be replaced by rng.choice, which learners
+    farm — see the 0/500-on-bridge result, 2026-06-03)."""
+    m = p2p_trade_mask()
+    words = np.zeros(MASK_WORDS, dtype=np.uint64)
+    for i in np.nonzero(m)[0]:
+        words[int(i) >> 6] |= np.uint64(1) << np.uint64(int(i) & 63)
+    return words
+
+
 def filter_p2p(mask_bool: np.ndarray, p2p_bool: np.ndarray) -> tuple[np.ndarray, list[int]]:
     """AND-NOT p2p trades off ``mask_bool``; never strand a seat with no legal move."""
     filtered = mask_bool & ~p2p_bool

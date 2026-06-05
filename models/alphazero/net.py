@@ -47,6 +47,31 @@ class PolicyValueNet(nn.Module):
         return self.policy_head(z), self.value_head(z).squeeze(-1)
 
 
+def infer_hidden(net_state: dict) -> tuple[int, ...]:
+    """Trunk widths from a PolicyValueNet state_dict (trunk.N.weight shapes).
+
+    Lets loaders reconstruct the right architecture from any checkpoint
+    instead of assuming the default — the batched trainer's --hidden made
+    net size a per-run choice."""
+    idx_w = sorted(
+        (int(k.split(".")[1]), v.shape[0])
+        for k, v in net_state.items()
+        if k.startswith("trunk.") and k.endswith(".weight")
+    )
+    return tuple(w for _i, w in idx_w)
+
+
+def load_policy_value_net(ckpt_state: dict, device: str = "cpu") -> PolicyValueNet:
+    """Build + load a PolicyValueNet with the architecture the checkpoint
+    actually has. ``ckpt_state`` is the torch.load()'d dict holding
+    'net_state'."""
+    sd = ckpt_state["net_state"]
+    net = PolicyValueNet(hidden=infer_hidden(sd)).to(device)
+    net.load_state_dict(sd)
+    net.eval()
+    return net
+
+
 def masked_log_softmax(logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """log-softmax over legal actions only. mask: bool (B, NUM_ACTIONS).
 

@@ -27,7 +27,9 @@ import torch
 import fastcatan
 
 from models.alphazero.net import PolicyValueNet
-from models.alphazero.mcts import NUM_ACTIONS, OBS_SIZE, NUM_PLAYERS
+from models.alphazero.mcts import (
+    NUM_ACTIONS, OBS_SIZE, NUM_PLAYERS, p2p_banned_words,
+)
 
 _NO_ACTION = 0xFFFFFFFF
 
@@ -43,14 +45,17 @@ class RandomOpp:
 
 
 class ABOpp:
-    def __init__(self, depth, prune, rng):
+    def __init__(self, depth, prune, rng, banned=None):
         self.depth = depth
         self.prune = prune
         self.rng = rng
+        self.banned = banned   # uint64[MASK_WORDS] search-wide exclusion, or None
         self.name = f"ab_d{depth}"
 
     def act(self, env, seat, legal):
-        a = env.ab_decide(seat, self.depth, self.prune)
+        a = (env.ab_decide(seat, self.depth, self.prune, self.banned)
+             if self.banned is not None
+             else env.ab_decide(seat, self.depth, self.prune))
         return a if (a != _NO_ACTION and a in legal) else self.rng.choice(legal)
 
 
@@ -88,8 +93,9 @@ def build_members(payload: dict, rng):
     members = []
     if payload.get("include_random", True):
         members.append(RandomOpp(rng))
+    banned = p2p_banned_words() if payload.get("suppress") else None
     for d in payload.get("ab_depths", []):
-        members.append(ABOpp(d, payload.get("ab_prune", False), rng))
+        members.append(ABOpp(d, payload.get("ab_prune", False), rng, banned))
     for name, sd in payload.get("snapshots", []):
         members.append(SnapshotOpp(name, sd, rng))
     return members

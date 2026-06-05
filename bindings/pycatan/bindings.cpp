@@ -143,6 +143,9 @@ Determinism: same seed -> same trajectory. Perft hashes pinned.
     m.attr("NUM_EDGES")   = uint32_t(topology::NUM_EDGES);
     m.attr("NUM_HEXES")   = uint32_t(topology::NUM_HEXES);
     m.attr("NUM_PORTS")   = uint32_t(topology::NUM_PORTS);
+    m.attr("SNAPSHOT_BYTES") = uint32_t(SNAPSHOT_BYTES);  // Env.snapshot() byte length
+    m.attr("SIG_INTS")       = uint32_t(SIG_INTS);        // ints per write_sigs row
+    m.attr("SKIP_ACTION")    = SKIP_ACTION;               // step_raw no-op sentinel
 
     // --- Action ID constants (under fastcatan.action) ---
     nb::module_ act = m.def_submodule("action", "Flat action ID layout.");
@@ -251,6 +254,24 @@ Determinism: same seed -> same trajectory. Perft hashes pinned.
              "alpha-beta (Catanatron AlphaBetaPlayer port, DEFAULT_WEIGHTS). "
              "Reads the live state; does not mutate it. Returns a flat action "
              "ID, or 0xFFFFFFFF if there is no legal action.")
+        .def("ab_decide",
+             [](const PyEnv& e, uint8_t pov, int depth, bool prune,
+                nb::ndarray<uint64_t, nb::ndim<1>, nb::c_contig,
+                            nb::device::cpu> banned_mask) {
+                 if (banned_mask.shape(0) != MASK_WORDS)
+                     throw std::runtime_error("banned mask length mismatch");
+                 return ab_decide(e.s, e.b, pov, depth, prune, nullptr,
+                                  banned_mask.data());
+             },
+             nb::arg("pov"), nb::arg("depth"), nb::arg("prune"),
+             nb::arg("banned_mask"),
+             "Overload with a banned-action bitmask (uint64[MASK_WORDS], "
+             "bit=1 -> excluded) applied at EVERY node of the search — e.g. "
+             "p2p trades when the driving game suppresses them. Never "
+             "strands: a node whose action set would empty keeps its "
+             "unfiltered set. Whenever a non-banned legal root action exists "
+             "the pick is non-banned, so callers need no random fallback "
+             "(closes the fallback hole learners farm).")
         .def("ab_value",
              [](const PyEnv& e, uint8_t pov) {
                  return ab_value(e.s, e.b, pov, nullptr);
@@ -266,6 +287,9 @@ Determinism: same seed -> same trajectory. Perft hashes pinned.
     using ArrU64 = nb::ndarray<uint64_t, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
     using ArrF32_2D = nb::ndarray<float,    nb::ndim<2>, nb::c_contig, nb::device::cpu>;
     using ArrU64_2D = nb::ndarray<uint64_t, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+    using ArrU8_2D  = nb::ndarray<uint8_t,  nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+    using ArrI32_2D = nb::ndarray<int32_t,  nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+    using ArrF32_3D = nb::ndarray<float,    nb::ndim<3>, nb::c_contig, nb::device::cpu>;
 
     nb::class_<PyBatchedEnv>(m, "BatchedEnv",
         R"(Owns N independent Catan envs in one contiguous buffer.
@@ -418,5 +442,97 @@ roughly free vs full recompute.
         .def("player_handsize",
              [](const PyBatchedEnv& e, uint32_t i, uint32_t pl) -> uint8_t {
                  return e.inner.states[i].player_handsize[pl];
-             }, nb::arg("env_idx"), nb::arg("player"));
+             }, nb::arg("env_idx"), nb::arg("player"))
+        // --- Batched tree-search primitives (GPU-batched MCTS) ---
+        .def("save_snapshots",
+             [](PyBatchedEnv& e, ArrU8_2D out) {
+                 if (out.shape(0) != e.inner.n || out.shape(1) != SNAPSHOT_BYTES)
+                     throw std::runtime_error("snapshot buffer shape mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_save(e.inner, out.data());
+             },
+             nb::arg("out"),
+             R"(Serialize all envs into a (num_envs, SNAPSHOT_BYTES) uint8 buffer.
+
+Row i equals ``snapshot(i)`` / ``Env.snapshot()`` bytes; rows round-trip
+through ``load_snapshots`` and ``Env.load_snapshot``.)")
+        .def("load_snapshots",
+             [](PyBatchedEnv& e, ArrU8_2D buf) {
+                 if (buf.shape(0) != e.inner.n || buf.shape(1) != SNAPSHOT_BYTES)
+                     throw std::runtime_error("snapshot buffer shape mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_load(e.inner, buf.data());
+             },
+             nb::arg("buf"),
+             "Restore every env from a (num_envs, SNAPSHOT_BYTES) uint8 "
+             "buffer (row i -> env i). The in-state RNG is restored verbatim "
+             "— call ``reseed`` to resample chance per simulation.")
+        .def("reseed",
+             [](PyBatchedEnv& e, ArrU64 seeds) {
+                 if (seeds.shape(0) != e.inner.n)
+                     throw std::runtime_error("seeds length mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_reseed(e.inner, seeds.data());
+             },
+             nb::arg("seeds"),
+             "Reseed env i's internal RNG with ``seeds[i]`` (uint64). Batched "
+             "``Env.reseed`` — required after ``load_snapshots`` so each "
+             "simulation resamples chance instead of replaying the "
+             "snapshot's predetermined rolls/draws.")
+        .def("step_raw",
+             [](PyBatchedEnv& e, ArrU32 actions, ArrF32 rewards, ArrU8 dones) {
+                 if (actions.shape(0) != e.inner.n
+                     || rewards.shape(0) != e.inner.n
+                     || dones.shape(0)   != e.inner.n) {
+                     throw std::runtime_error("step buffer length mismatch");
+                 }
+                 nb::gil_scoped_release release;
+                 batched_env_step_raw(e.inner, actions.data(), rewards.data(),
+                                      dones.data());
+             },
+             nb::arg("actions"), nb::arg("rewards_out"), nb::arg("dones_out"),
+             R"(``step`` WITHOUT auto-reset, for tree search.
+
+Terminal states stay readable (no reset wipes them) and ``SKIP_ACTION``
+(0xFFFFFFFF) leaves an env untouched so finished walkers idle while the
+rest of the batch keeps descending. Does not advance the reset seed
+counter. GIL released.)")
+        .def("write_obs_pov_batch",
+             [](PyBatchedEnv& e, ArrU8 povs, ArrF32_2D out) {
+                 if (povs.shape(0) != e.inner.n)
+                     throw std::runtime_error("povs length mismatch");
+                 if (out.shape(0) != e.inner.n || out.shape(1) != OBS_SIZE)
+                     throw std::runtime_error("obs buffer shape mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_write_obs_pov(e.inner, povs.data(), out.data());
+             },
+             nb::arg("povs"), nb::arg("out"),
+             "Fill (num_envs, OBS_SIZE) float32: row i is env i's obs from "
+             "``povs[i]``'s POV (vs ``write_obs`` which fixes "
+             "current_player).")
+        .def("write_obs_all4",
+             [](PyBatchedEnv& e, ArrF32_3D out) {
+                 if (out.shape(0) != e.inner.n || out.shape(1) != 4
+                     || out.shape(2) != OBS_SIZE)
+                     throw std::runtime_error("obs buffer shape mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_write_obs_all4(e.inner, out.data());
+             },
+             nb::arg("out"),
+             "Fill (num_envs, 4, OBS_SIZE) float32 with every env's obs from "
+             "all 4 seat POVs — one pass for max^n MCTS leaf evaluation.")
+        .def("write_sigs",
+             [](PyBatchedEnv& e, ArrI32_2D out) {
+                 if (out.shape(0) != e.inner.n
+                     || out.shape(1) != uint32_t(SIG_INTS))
+                     throw std::runtime_error("sig buffer shape mismatch");
+                 nb::gil_scoped_release release;
+                 batched_env_write_sigs(e.inner, out.data());
+             },
+             nb::arg("out"),
+             R"(Fill (num_envs, SIG_INTS) int32 decision/chance signatures.
+
+Row layout: [current_player, phase, flag, dice_roll, handsize0..3, vp0..3]
+— the fields the Python MCTS ``_signature`` reads, in one OpenMP pass.
+Use ``row.tobytes()`` as a chance-outcome key.)");
 }

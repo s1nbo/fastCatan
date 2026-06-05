@@ -315,9 +315,19 @@ int prune_actions(const GameState& s, const BoardLayout& b,
 }
 
 int get_actions(const GameState& s, const BoardLayout& b, bool prune,
-                uint32_t* out) noexcept {
+                const uint64_t* banned, uint32_t* out) noexcept {
     uint32_t legal[NUM_ACTIONS];
     int n = legal_actions(s, legal);
+    if (banned && n > 0) {
+        // Drop banned ids at every node; never strand a node with an empty
+        // set (mirrors the Python-side filter_p2p fallback).
+        int m = 0;
+        for (int i = 0; i < n; ++i) {
+            uint32_t a = legal[i];
+            if (!(banned[a >> 6] & (1ULL << (a & 63)))) legal[m++] = a;
+        }
+        if (m > 0) n = m;
+    }
     if (!prune || n == 0) {
         for (int i = 0; i < n; ++i) out[i] = legal[i];
         return n;
@@ -335,11 +345,11 @@ int get_actions(const GameState& s, const BoardLayout& b, bool prune,
 // exactly as Catanatron's alphabeta does (action-level cutoffs only).
 double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
                  int depth, double alpha, double beta,
-                 const double* W, bool prune) noexcept {
+                 const double* W, bool prune, const uint64_t* banned) noexcept {
     if (depth == 0 || is_terminal(s)) return ab_value(s, b, pov, W);
 
     uint32_t actions[NUM_ACTIONS];
-    int na = get_actions(s, b, prune, actions);
+    int na = get_actions(s, b, prune, banned, actions);
     if (na == 0) return ab_value(s, b, pov, W);
 
     bool maximizing = (s.current_player == pov);
@@ -352,7 +362,7 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
             int nc = expand_action(s, b, actions[i], children, probas);
             double ev = 0.0;
             for (int j = 0; j < nc; ++j)
-                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune);
+                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
             if (ev > best) best = ev;
             if (best > alpha) alpha = best;
             if (alpha >= beta) break;           // beta cutoff
@@ -364,7 +374,7 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
             int nc = expand_action(s, b, actions[i], children, probas);
             double ev = 0.0;
             for (int j = 0; j < nc; ++j)
-                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune);
+                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
             if (ev < best) best = ev;
             if (best < beta) beta = best;
             if (beta <= alpha) break;           // alpha cutoff
@@ -376,7 +386,8 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
 }  // namespace
 
 uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
-                   int depth, bool prune, const double* weights) noexcept {
+                   int depth, bool prune, const double* weights,
+                   const uint64_t* banned) noexcept {
     const double* W = weights ? weights : AB_DEFAULT_WEIGHTS;
 
     // Recompute the root legal-action mask so the search is self-contained and
@@ -386,7 +397,7 @@ uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
     compute_mask(s, b, s.action_mask);
 
     uint32_t actions[NUM_ACTIONS];
-    int na = get_actions(s, b, prune, actions);
+    int na = get_actions(s, b, prune, banned, actions);
     if (na == 0) return 0xFFFFFFFFu;
     if (na == 1) return actions[0];             // Catanatron decide() shortcut
 
@@ -400,7 +411,7 @@ uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
         int nc = expand_action(s, b, actions[i], children, probas);
         double ev = 0.0;
         for (int j = 0; j < nc; ++j)
-            ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune);
+            ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
         if (ev > best_value) { best_value = ev; best_action = actions[i]; }
         if (best_value > alpha) alpha = best_value;  // thread alpha (root never cuts; beta=+inf)
     }

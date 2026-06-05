@@ -21,9 +21,11 @@ import torch
 
 import fastcatan
 
-from models.alphazero.net import PolicyValueNet
+from models.alphazero.net import PolicyValueNet, load_policy_value_net
 from models.ckpt import verify_stamp
-from models.alphazero.mcts import MCTS, _unpack, filter_p2p, p2p_trade_mask, MASK_WORDS
+from models.alphazero.mcts import (
+    MCTS, _unpack, filter_p2p, p2p_trade_mask, p2p_banned_words, MASK_WORDS,
+)
 from models.eval import wilson_ci
 
 WIN_VP = 10
@@ -63,17 +65,23 @@ def play_game(game_env, mcts: MCTS, rng, p2p_bool, opp_pick=None,
     return -1
 
 
-def make_alphabeta_pick(rng, depth: int, prune: bool):
+def make_alphabeta_pick(rng, depth: int, prune: bool, banned=None):
     """Opponent picker using the native C++ AlphaBeta (Env.ab_decide).
 
-    ab_decide recomputes the live mask, so its pick is normally legal; it returns
-    0xFFFFFFFF if it sees no move, and in a cross-seat forced sub-phase its seat-
-    relative pick can fall outside the acting seat's set. Fall back to random so the
-    sim always advances (mirrors models/env.py._opponent_action). Note: ab_decide
-    sees the C++ full mask incl. trades; if it ever returns a trade id it won't be in
-    our trade-filtered `legal`, so the guard routes it to a random non-trade move."""
+    ``banned`` (uint64[MASK_WORDS], e.g. mcts.p2p_banned_words() when p2p
+    trades are suppressed) keeps the WHOLE search inside the filtered action
+    space, so the pick lands in our ``legal`` set and the random fallback
+    below is a never-strand safety net instead of a hole the learner can farm
+    (PPO trained vs the holey AB scored 0/500 on the bridge, 2026-06-03).
+
+    Without ``banned`` (legacy): ab_decide sees the C++ full mask incl.
+    trades; it returns 0xFFFFFFFF if it sees no move, in a cross-seat forced
+    sub-phase its pick can fall outside the acting seat's set, and a trade id
+    won't be in trade-filtered ``legal`` — all of which fell back to a
+    uniform-random move (mirrors models/env.py._opponent_action)."""
     def pick(game_env, cp, legal):
-        a = game_env.ab_decide(cp, depth, prune)
+        a = (game_env.ab_decide(cp, depth, prune, banned)
+             if banned is not None else game_env.ab_decide(cp, depth, prune))
         return a if (a != _NO_ACTION and a in legal) else rng.choice(legal)
     return pick
 
@@ -104,9 +112,7 @@ def main() -> None:
         raise FileNotFoundError(ckpt)
     verify_stamp(ckpt, strict=False)
     state = torch.load(str(ckpt), map_location=args.device, weights_only=False)
-    net = PolicyValueNet().to(args.device)
-    net.load_state_dict(state["net_state"])
-    net.eval()
+    net = load_policy_value_net(state, args.device)
 
     suppress = not args.allow_trades
     p2p_bool = p2p_trade_mask() if suppress else None
@@ -125,7 +131,9 @@ def main() -> None:
 
     opp_pick = None
     if args.opponent == "alphabeta":
-        opp_pick = make_alphabeta_pick(rng, args.ab_depth, args.ab_prune)
+        opp_pick = make_alphabeta_pick(
+            rng, args.ab_depth, args.ab_prune,
+            banned=p2p_banned_words() if suppress else None)
 
     wins = 0
     seat_wins = [0, 0, 0, 0]

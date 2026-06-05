@@ -38,7 +38,7 @@ def _worker(payload: dict) -> dict:
     import random
     import fastcatan
     from models.alphazero.net import PolicyValueNet
-    from models.alphazero.mcts import MCTS, p2p_trade_mask
+    from models.alphazero.mcts import MCTS, p2p_trade_mask, p2p_banned_words
     from models.alphazero.selfplay import play_one_game
     from models.alphazero.evaluate import make_alphabeta_pick
 
@@ -71,7 +71,9 @@ def _worker(payload: dict) -> dict:
         members = build_members(payload, opp_rng)
         weights_pfsp = payload["weights_pfsp"]
     elif mode == "alphabeta":
-        fixed_opp = make_alphabeta_pick(opp_rng, payload["ab_depth"], payload["ab_prune"])
+        fixed_opp = make_alphabeta_pick(
+            opp_rng, payload["ab_depth"], payload["ab_prune"],
+            banned=p2p_banned_words() if suppress else None)
 
     obs_l, pi_l, mask_l, z_l = [], [], [], []
     winners, decisions, tables = [], [], []
@@ -105,7 +107,7 @@ def _evaluate(net, sims, c_puct, games, seed, suppress, opponent="random",
               ab_depth=1, ab_prune=False, device="cpu") -> float:
     """Win rate for the learner at seat 0 (greedy, no root noise) vs `opponent`."""
     import fastcatan
-    from models.alphazero.mcts import MCTS, p2p_trade_mask
+    from models.alphazero.mcts import MCTS, p2p_trade_mask, p2p_banned_words
     from models.alphazero.evaluate import play_game, make_alphabeta_pick
 
     if opponent == "alphabeta":
@@ -119,7 +121,9 @@ def _evaluate(net, sims, c_puct, games, seed, suppress, opponent="random",
     game_env = fastcatan.Env()
     p2p = p2p_trade_mask() if suppress else None
     rng = random.Random(seed)
-    opp_pick = (make_alphabeta_pick(rng, ab_depth, ab_prune)
+    opp_pick = (make_alphabeta_pick(
+                    rng, ab_depth, ab_prune,
+                    banned=p2p_banned_words() if suppress else None)
                 if opponent == "alphabeta" else None)
     wins = winnered = 0
     for _ in range(games):

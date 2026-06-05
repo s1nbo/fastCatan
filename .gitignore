@@ -39,3 +39,9 @@ models/checkpoints/sp_league_200m_512/*
 **/tb/
 *.out.tfevents.*
 models/checkpoints/seeds/2048-2048-1024/ppo_final.zip
+
+# batched-AZ / IL experiment artifacts (this machine only)
+models/checkpoints/alphazero_batched_*/
+models/checkpoints/il_*/
+models/datasets/
+DEBUG/logs/*.log

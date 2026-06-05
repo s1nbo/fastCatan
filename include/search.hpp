@@ -50,9 +50,19 @@ namespace catan {
     //            most-impactful robber); if false, search all legal actions
     //            (Catanatron AlphaBetaPlayer default).
     //   weights: null -> AB_DEFAULT_WEIGHTS.
+    //   banned : optional uint64[MASK_WORDS] bitmask of action IDs excluded at
+    //            EVERY node of the search (e.g. p2p trades when the driving
+    //            game suppresses them). A node whose action set would become
+    //            empty after filtering keeps its unfiltered set (never-strand,
+    //            mirroring the Python-side filter_p2p fallback). null -> no
+    //            filtering. Whenever any non-banned legal action exists at the
+    //            root, the returned action is non-banned — closing the
+    //            random-fallback hole where an out-of-set pick made callers
+    //            substitute a uniform-random move (which learners farm).
     // Returns the chosen flat action ID, or 0xFFFFFFFF if no legal action
     // exists (terminal / not pov's decision).
     uint32_t ab_decide(const GameState& s, const BoardLayout& b, uint8_t pov,
-                       int depth, bool prune, const double* weights) noexcept;
+                       int depth, bool prune, const double* weights,
+                       const uint64_t* banned = nullptr) noexcept;
 
 }  // namespace catan
