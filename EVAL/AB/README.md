@@ -63,45 +63,25 @@ gate in `test_native_ab_fidelity.py` (this dir).
 | `REPRODUCIBILITY.md` | toolchain, build flags, the **two-env** setup, **catanatron git pin**, seeds, train config. |
 | `results/` | tournament result JSONs + `validation_1084.md` (pipeline validation). |
 
-## Environment — anaconda
+## Environment
 
-The RL interface is **obs 1084 / actions 286**, and all M4 work runs in the
-**anaconda** interpreter (see `REPRODUCIBILITY.md` §5):
-
-- **`/home/sinan/anaconda3/bin/python`** — 1084/286 fastcatan + catanatron 3.3.0
-  + sb3. **Train and eval M4 here.**
-
-Catanatron is a **pinned git build, not PyPI** (3.3.0 @ `41ba0db`, "deterministic
-discards"); installed editable from `/home/sinan/Desktop/msc/catanatron` and
-recorded in root `requirements.txt`. Verified at this commit: 281/281
-`EVAL/bridge/tests` pass (2026-05-27). `soak.py` needs only fastcatan and runs in
-either env. See `REPRODUCIBILITY.md` §6 for why the pin must be a commit (newer
-builds move `models.tiles` → `models.map` and break bridge import).
-
-## Run (anaconda)
+The RL interface is **obs 1084 / actions 286**. The repo `.venv` carries
+fastcatan + the **pinned catanatron** (3.3.0 @ git `41ba0db`, not PyPI —
+newer builds move `models.tiles` → `models.map` and break the bridge import;
+see `REPRODUCIBILITY.md`) and is what the current results were produced
+under. `soak.py` needs only fastcatan.
 
 ```bash
-AP=/home/sinan/anaconda3/bin/python
-
-# 1) Train the vs-random seed on the 1084/286 interface (768 envs).
-$AP -m models.train_ppo --num-envs 768 --total-steps 50_000_000 --run-name ppo_1084_50m
-#    >=30M for gate margin; 50M is the verified M2/M3 seed.
-
-# 2) Thesis gate (slow — AlphaBeta ~6.4 s/game unpruned, ~1.8 h/1000): vs Alpha-Beta.
-#    --no-trades is required: Catanatron's AlphaBeta crashes on P2P trade actions.
-PYTHONHASHSEED=0 PYTHONPATH=EVAL $AP -m AB.tournament \
-    --ckpt models/checkpoints/ppo_1084_50m/ppo_final.zip \
-    --games 1000 --opponent alphabeta --ab-depth 2 --ab-prune --seed 42 --no-trades
-
-# Smoke (seconds): vs random.
-PYTHONPATH=EVAL $AP -m AB.tournament --games 20 --opponent random --ckpt models/checkpoints/ppo_1084_50m/ppo_final.zip
+# Smoke (seconds): any policy vs random through the bridge.
+PYTHONPATH=.:EVAL python -m AB.tournament --games 20 --opponent random --ckpt <ckpt>
 
 # 10^8 soak (~minutes at ~70k steps/s).
-PYTHONPATH=EVAL $AP -m AB.soak --steps 100000000 --seed 7
+PYTHONPATH=.:EVAL python -m AB.soak --steps 100000000 --seed 7
 ```
 
-The evaluated model is a `--ckpt` flag — swap in any future M3 self-play
-checkpoint (must be 1084/286) freely.
+The evaluated model is a `--ckpt` flag — reactive checkpoints (`--policy
+ppo`, SB3 .zip) and search checkpoints (`--policy mcts`, AZ .pt) both work;
+the interface must be 1084/286.
 
 ## State-aware hybrid search through the bridge (`--policy mcts`)
 
@@ -139,24 +119,15 @@ exploiting model error harder. Next instrument: replay bridge games and
 diff the in-tree model's predicted opponent moves against catanatron's
 actual moves.
 
-## Status (2026-05-28)
+## Status (2026-06-06)
 
-- [x] PPO→bridge policy adapter (`policy.py`) — smoke: 30/30 legal picks.
-- [x] Tournament harness (`tournament.py`) — win rate + 95% CI + gate + JSON.
-- [x] Soak harness (`soak.py`) — smoke: 10k steps, RSS flat (1.00×), STABILITY PASS.
-- [x] catanatron pinned to git `41ba0db` (3.3.0, not PyPI), installed editable +
-      recorded in root `requirements.txt`. Bridge verified: 281/281 tests pass.
-- [x] Build is 1084/286 in anaconda (`editable.rebuild=true` so it can't go stale).
-- [x] 1084 pipeline validated end-to-end: `test_obs_identity` 5/5 (encoder↔C++
-      parity) + uniform-bridge games vs Value/AlphaBeta complete. See
-      `results/validation_1084.md`.
-- [x] Reproducibility doc.
-- [x] **M2 seed `ppo_1084_50m` trained** (50M, 1084/286) — 95.5% vs random native,
-      89.5% via bridge vs `RandomPlayer`.
-- [~] Final model vs Alpha-Beta, ≥1000 games — harness ran live on `ppo_1084_50m`:
-      **0/200 vs AlphaBeta** (`--no-trades`, gate FAIL), a real result (same model
-      beats `RandomPlayer` 89.5% through the same bridge). Needs the stronger M3
-      self-play model.
+History, compressed: harness/soak/pin/pipeline validated 2026-05 (281/281
+bridge tests, obs-identity 5/5, `results/validation_1084.md`,
+`REPRODUCIBILITY.md`); every reactive policy — the 50M PPO seed (89.5% vs
+`RandomPlayer` through this same bridge), 200M league self-play, arch-sweep
+nets — scored **0/200–0/500 vs AlphaBeta** here, which is what motivated the
+search campaign (root README).
+
 - [x] **Native AB ladder beaten (2026-06-06):** hybrid search above parity vs
       d1 (29.0% [25.5–32.8]), at parity vs d2 (23.75% [19.8–28.2]) — see the
       campaign section in the root README for the design rules

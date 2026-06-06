@@ -174,20 +174,13 @@ for agent in env.agent_iter():
     env.step(action)
 ```
 
-### Training with MaskablePPO
+### Training (reactive baselines)
 
-```bash
-# vs random opponents (M2 gate)
-python3 -m models.train_ppo --num-envs 64 --total-steps 100_000
-
-# vs the native Alpha-Beta opponent (the M4 eval bot, in-engine and fast)
-python3 -m models.train_ppo --opponent alphabeta --ab-depth 1 --num-envs 768 ...
-```
-
-See [`models/PLAN.md`](models/PLAN.md) for the trainers (PPO + A2C/DQN/MuZero
-references) and `models/env.py` for the single-agent Gym wrapper. The
-`--opponent alphabeta` path and its fidelity to Catanatron are documented in
-[`EVAL/AB/README.md`](EVAL/AB/README.md).
+The PPO/A2C/DQN trainers (`models/train_ppo.py` etc., docs in
+[`models/PLAN.md`](models/PLAN.md)) remain as the reactive-policy baselines —
+historically the M2/M3 track. Note the campaign finding below: reactive
+policies cap out near 0 vs Alpha-Beta regardless of steps/capacity; the live
+track is the search stack in `models/alphazero/`.
 
 ## The Alpha-Beta campaign
 
@@ -289,15 +282,13 @@ Flat `Discrete(NUM_ACTIONS=286)`:
 237       PLAY_ROAD_BUILDING
 238..262  PLAY_YEAR_OF_PLENTY  (give1*5 + give2)
 263..267  PLAY_MONOPOLY  by resource
-268..272  TRADE_ADD_GIVE_BASE
-273..277  TRADE_REMOVE_GIVE_BASE
-278..282  TRADE_ADD_WANT_BASE
-283..287  TRADE_REMOVE_WANT_BASE
-288       TRADE_OPEN
-289       TRADE_ACCEPT
-290       TRADE_DECLINE
-291..294  TRADE_CONFIRM_BASE  by partner
-295       TRADE_CANCEL
+268..272  TRADE_ADD_GIVE  by resource (p2p compose)
+273..277  TRADE_ADD_WANT  by resource (p2p compose)
+278       TRADE_OPEN
+279       TRADE_ACCEPT
+280       TRADE_DECLINE
+281..284  TRADE_CONFIRM  by partner seat
+285       TRADE_CANCEL
 ```
 
 All action IDs are exposed as `fastcatan.action.<NAME>`.
