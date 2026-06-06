@@ -1,0 +1,90 @@
+{
+  "timestamp": "2026-06-06T13:14:49",
+  "games": 40,
+  "seed": 20260606,
+  "table": {
+    "depth": 2,
+    "prune": true
+  },
+  "model": {
+    "depth": 2,
+    "prune": true
+  },
+  "decisions": 7016,
+  "agreement": 0.9107753705815279,
+  "unmapped": 0,
+  "by_action_type": {
+    "BUILD_SETTLEMENT": {
+      "n": 696,
+      "agree": 0.9727011494252874
+    },
+    "BUILD_ROAD": {
+      "n": 1564,
+      "agree": 0.8567774936061381
+    },
+    "MOVE_ROBBER": {
+      "n": 532,
+      "agree": 0.7706766917293233
+    },
+    "END_TURN": {
+      "n": 1087,
+      "agree": 0.9806807727690893
+    },
+    "MARITIME_TRADE": {
+      "n": 1268,
+      "agree": 0.9274447949526814
+    },
+    "BUILD_CITY": {
+      "n": 310,
+      "agree": 0.9451612903225807
+    },
+    "DISCARD_RESOURCE": {
+      "n": 1527,
+      "agree": 0.9214145383104125
+    },
+    "BUY_DEVELOPMENT_CARD": {
+      "n": 14,
+      "agree": 0.42857142857142855
+    },
+    "PLAY_KNIGHT_CARD": {
+      "n": 8,
+      "agree": 0.875
+    },
+    "ROLL": {
+      "n": 6,
+      "agree": 1.0
+    },
+    "PLAY_MONOPOLY": {
+      "n": 4,
+      "agree": 0.5
+    }
+  },
+  "by_turn_bucket": {
+    "0-19": {
+      "n": 1296,
+      "agree": 0.941358024691358
+    },
+    "20-39": {
+      "n": 1436,
+      "agree": 0.9227019498607242
+    },
+    "40-59": {
+      "n": 1654,
+      "agree": 0.9123337363966143
+    },
+    "60-79": {
+      "n": 1566,
+      "agree": 0.8971902937420179
+    },
+    "80-99": {
+      "n": 1064,
+      "agree": 0.875
+    }
+  },
+  "delta_buckets": {
+    "sub_vp": 236,
+    "tie": 321,
+    "vp_level": 56,
+    "stochastic_skip": 13
+  }
+}

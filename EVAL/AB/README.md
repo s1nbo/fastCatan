@@ -134,11 +134,30 @@ search campaign (root README).
       (dense value targets, neuro-symbolic leaves, sims scaling).
 - [x] State-aware MCTS bridge policy + seat rotation wired (`--policy mcts`,
       `--rotate-seats`); `Env.recompute_mask()` added for injected states.
-- [~] Official bridge gate: **5/100 = 5.0% [2.2–11.2]** vs AB-d2 (rotated) —
-      first-ever consistent bridge wins (record was 0/200) but the
-      native→bridge transfer gap (4–5×) is the open problem; suspects + ruled-out
-      list above.
-- [ ] Close the transfer gap (model-divergence differential debugging), then
-      re-run the ≥1000-game thesis gate.
+- [x] **Transfer gap CLOSED (2026-06-06): GATE PASS at 200 games — 65/200 =
+      32.5% [26.4–39.3] vs catanatron AB-d2** (`results/tournament_mcts_
+      alphabeta_20260606_152919.json`). The gap was three real fixes (faithful
+      in-tree model `--model-catanatron-chance`, policy-owned robber composite,
+      catanatron-line teacher data) plus the decisive one: **catanatron
+      shuffles seating** (`State.__init__` `random.sample`) — the policy's
+      list-position seat had the search optimizing an opponent in ~75% of
+      games, pinning bridge runs at 0.25×native ≈ 6%. Fixed by per-decision
+      `_sync_seat` (commit 19e2698). Full hunt: `model_divergence_*.json` +
+      git history e6f5b3d→335833a.
+- [~] **Official ≥1000-game M4 run: INTERRUPTED at 150/1000 (67 wins = 44.7%,
+      running hot) for an OS switch.** RESUME with exactly:
+      ```
+      PYTHONHASHSEED=0 PYTHONPATH=.:EVAL python -m AB.tournament \
+          --policy mcts --ckpt models/checkpoints/il_ab_d2_160k_vpm/il_final.pt \
+          --games 1000 --mcts-sims 512 --model-ab-depth 2 --model-ab-prune \
+          --model-catanatron-chance --opponent alphabeta --ab-depth 2 \
+          --ab-prune --no-trades --seed 2026 --progress-every 25 \
+          --out EVAL/AB/results
+      ```
+      (Fresh start is fine — the run is seeded/reproducible; ~16.5 s/game ≈
+      4.6 h. Needs `models/checkpoints/il_ab_d2_160k_vpm/il_final.pt`; if the
+      checkpoint isn't on the target device, regenerate in ~6 min:
+      `il_dataset --games 160000 --workers 8 --ab-depth 2` then
+      `il_pretrain --value-target vp_margin --hidden 1024,1024,512`.)
 - [ ] Full 10⁸-step soak (smoke green; ~24 min full).
-- [ ] Record thesis-gate result.
+- [ ] Record thesis-gate result (the 1000-game JSON).
