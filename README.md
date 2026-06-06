@@ -10,6 +10,17 @@ stepping with optional OpenMP, Gymnasium + PettingZoo wrappers.
 > the thesis explicitly calls out is simulator throughput — existing
 > Python sims (Catanatron) can't generate self-play at the volume modern
 > RL needs.
+>
+> **Status (2026-06-06):** the agent (hybrid: imitation-learned prior +
+> native `ab_value` leaves + ≥512-sim stochastic search) is **above parity
+> vs Alpha-Beta-d1** on the native engine (29.0% [25.5–32.8], 600 games;
+> 25% = 4-player parity) and **at parity vs Alpha-Beta-d2** (23.75%
+> [19.8–28.2], 400 games — the opponent that scored 0/200 against every
+> reactive policy). The official catanatron-bridge gate shows the
+> first-ever consistent bridge wins (5.0% [2.2–11.2], seat-rotated) but a
+> 4–5× native→bridge transfer gap remains open — see
+> [The Alpha-Beta campaign](#the-alpha-beta-campaign) and
+> `EVAL/AB/README.md`.
 
 ## Throughput
 
@@ -117,6 +128,19 @@ env.step(actions, rewards, dones)
 env.write_obs(obs)
 ```
 
+`BatchedEnv` also exposes **tree-search primitives** (all OpenMP, GIL-free)
+so a batched MCTS can drive the N slots as parallel scratch branches:
+`save_snapshots`/`load_snapshots` ((N, `SNAPSHOT_BYTES`) buffers),
+`reseed(seeds)` (resample chance per simulation), `step_raw` (no auto-reset;
+`SKIP_ACTION` parks an env), `write_obs_pov_batch`/`write_obs_all4`,
+`write_sigs` (chance signatures), and `ab_decide_batch` (native AB pick for
+every env's current player — the batched opponent for training/searching vs
+AB). On the single `Env`: `recompute_mask()` rebuilds the cached legal mask
+after loading an *injected* state (bridge `state_inject` fills the state
+fields but not the mask), and `ab_decide(..., banned_mask)` excludes an
+action set at **every** node of the native search (e.g. p2p trades under
+`--no-trades`) so its pick never needs a random fallback.
+
 ### Gymnasium wrapper (single-agent vs random opponents)
 
 ```python
@@ -164,6 +188,85 @@ See [`models/PLAN.md`](models/PLAN.md) for the trainers (PPO + A2C/DQN/MuZero
 references) and `models/env.py` for the single-agent Gym wrapper. The
 `--opponent alphabeta` path and its fidelity to Catanatron are documented in
 [`EVAL/AB/README.md`](EVAL/AB/README.md).
+
+## The Alpha-Beta campaign
+
+The thesis question — *can a learned agent beat Alpha-Beta?* — was answered
+by a sequence of controlled experiments (each gated by 200-game ladders vs
+the fixed-hole native AB). Full forensics live in the git history; the
+distilled findings:
+
+### What failed (the falsification ledger)
+
+Every result below is measured, not assumed. Don't re-try these:
+
+| Lever | Verdict |
+|---|---|
+| More PPO steps (200M league self-play) | 0/200 vs AB — gains orthogonal |
+| More capacity alone (512→2048 nets) | vs-random ↑, vs-AB flat |
+| Reward shaping (VP potential) | policy-invariant, vs-AB ≈ 0 |
+| Search on a **sparse-value** net (any net, any sims 64–512) | flat 2–7% — ±1 leaf noise can't resolve AB-scale (1–3% win-prob) move differences |
+| Direct/anchored RL fine-tuning vs AB | value dilution (homogeneous loss margins flatten the value head); anchor stops the bleed but never climbs |
+| Naive DAgger past round 1 | plateaus at the linear-error floor (~6–7.5% raw) |
+
+### What worked (the design rules)
+
+1. **Distribution beats optimization.** A supervised clone of AB-d1 (40k
+   AB-vs-AB games — 42 s of generation, 78 s of training) reaches **0.975
+   vs random**; PPO needed 30–50M steps for the same. The vs-random
+   bottleneck was always the self-play distribution, never the optimizer.
+2. **Value heads that feed search need DENSE targets** (`vp_margin`, not
+   ±1). Single-variable test: same data, same net, value target ±1→margin
+   flipped search from no-effect to 2× (7.5%→15.0% vs AB-d1 at 256 sims).
+3. **The winning architecture is neuro-symbolic**: learned prior proposes
+   (tames ~50-way branching), the native `ab_value` judges leaves
+   (deterministic, zero variance — needs a *two-scale* tanh squash because
+   catanatron's value is lexicographic: VP weight 3e14 over fine features
+   ~1e7), and ≥512 stochastic sims out-search AB's fixed 1–2 ply. The
+   hybrid is prior-invariant (40k/80k/160k clones all ≈23% at 256 sims) —
+   **sims is the scaling axis** (23.0% → 28.25% → 30.5% at 256/512/1024 vs d1).
+4. **Trainer laws** (from controlled pairs): replay ratio ≤ 2; lr scales
+   *down* with net size (1024-net at the 512-net's lr = noisy plateau);
+   track BOTH raw-policy and search-eval per checkpoint — their divergence
+   is the diagnostic (raw↑/search↓ = value dilution; loss curves see nothing).
+
+### The pipeline (all CPU-cheap; d2 data costs the same as d1)
+
+```bash
+# 1. Teacher dataset: AB-vs-AB games at ~1000 games/s (0 fallbacks = the
+#    banned-mask ab_decide has no random hole to clone)
+python -m models.alphazero.il_dataset --games 40000 --workers 8 \
+    --ab-depth 1 --out-dir models/datasets/il_ab_d1
+
+# 2. Supervised pretrain (masked-CE on teacher action + DENSE value)
+python -m models.alphazero.il_pretrain --data-dir models/datasets/il_ab_d1 \
+    --hidden 1024,1024,512 --value-target vp_margin --device cuda
+
+# 3. The ladder (the campaign's unit of evidence — 200 games, report the CI)
+python -m models.alphazero.evaluate --ckpt <ckpt> --opponent alphabeta \
+    --ab-depth 2 --sims 512 --games 200 --leaf-eval ab_value \
+    --ab-value-scale 86000000
+
+# 4. The official gate (catanatron engine, seat-rotated)
+PYTHONPATH=.:EVAL python -m AB.tournament --policy mcts --ckpt <ckpt> \
+    --mcts-sims 512 --model-ab-depth 2 --model-ab-prune \
+    --opponent alphabeta --ab-depth 2 --ab-prune --no-trades --rotate-seats
+```
+
+GPU-batched training infrastructure (used for the self-play track;
+`models/alphazero/batched_mcts.py` + `batched_selfplay.py`): G game trees
+searched in lockstep, one GPU forward per simulation over all pending
+leaves — 9–10×/decision over per-game MCTS, flat G=64→1024.
+
+### Open problem
+
+The native→bridge transfer gap (23.75% → 5.0% vs d2). Ruled out by
+experiment: injected-state value fidelity (machine precision), opponent
+pruning strength, in-tree model depth. Live suspects: catanatron-AB's
+behavioral divergence from the native model (documented chance-handling
+deviations, tie-breaks), sub-prompt decision routing through the action
+codec, and a bridge-only sims-inversion (512 < 256) consistent with deeper
+search exploiting model error.
 
 ## Key concepts
 
@@ -243,7 +346,14 @@ tests/                   Python correctness tests (invariants, scenarios, determ
 tests/fuzz_invariants.cpp  10⁷-game C++ invariant fuzz gate (ctest -R invariants; see PLAN.md M1)
 EVAL/bridge/                  Catanatron interop + cross-engine differential (see EVAL/bridge/PLAN.md)
 EVAL/AB/                      M4 Alpha-Beta eval + native-AB fidelity gate (see EVAL/AB/README.md)
+EVAL/AB/mcts_policy.py        state-aware hybrid-search bridge policy (--policy mcts)
 models/                  RL trainers (PPO + A2C/DQN/MuZero) + Gym env (see models/PLAN.md)
+models/alphazero/        the AB campaign: mcts + batched_mcts (lockstep GPU search),
+                         batched_selfplay (single-process trainer, anchor-mixing),
+                         il_dataset (AB-vs-AB generator + DAgger mode), il_pretrain
+                         (masked-CE + dense-value), mcts_vs_fixed (--leaf-eval ab_value
+                         hybrid), evaluate (the 200-game ladder)
+models/datasets/         IL shards + memmap caches (gitignored)
 DEBUG/ui/                      obs decoder / board render / replay (see DEBUG/ui/PLAN.md)
 examples/                random + alpha-beta player references
 DEBUG/bench/                   throughput benchmarks (bench_throughput.py + C++ bench_step/bench_batched)

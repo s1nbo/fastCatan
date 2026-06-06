@@ -57,7 +57,8 @@ gate in `test_native_ab_fidelity.py` (this dir).
 | File | Role |
 |---|---|
 | `policy.py` | wraps a trained checkpoint as a bridge `PolicyFn` (`obs, mask, rng -> int`). Registry mirrors `models/eval.py`; only `ppo` wired today. Raises on obs/action-dim mismatch. |
-| `tournament.py` | the harness: policy-via-bridge vs `AlphaBetaPlayer`/`ValueFunctionPlayer`/`RandomPlayer`. Win rate + 95% Wilson CI + thesis gate → `results/*.json`. |
+| `mcts_policy.py` | **state-aware** bridge policy: the bridge stashes the live `Game` each `decide()`; this injects it into a fastcatan `Env` (`bridge/state_inject`), calls `recompute_mask()` (injected states carry a stale cached mask — without this every root step is a masked no-op), runs the hybrid `MCTSvsFixed` (learned prior + `ab_value` leaves), and answers within the bridge's action mask (fallbacks counted in the result JSON). |
+| `tournament.py` | the harness: policy-via-bridge vs `AlphaBetaPlayer`/`ValueFunctionPlayer`/`RandomPlayer`. Win rate + 95% Wilson CI + thesis gate → `results/*.json`. `--policy mcts` for search agents, `--rotate-seats` for seat-balanced runs (default is RED/seat-0 only), `--model-ab-depth/--model-ab-prune` to match the in-tree opponent model to the actual table. |
 | `soak.py` | 10⁸-step stability soak (pure fastcatan): finite-obs + mask-integrity + leak checks. |
 | `REPRODUCIBILITY.md` | toolchain, build flags, the **two-env** setup, **catanatron git pin**, seeds, train config. |
 | `results/` | tournament result JSONs + `validation_1084.md` (pipeline validation). |
@@ -102,6 +103,42 @@ PYTHONPATH=EVAL $AP -m AB.soak --steps 100000000 --seed 7
 The evaluated model is a `--ckpt` flag — swap in any future M3 self-play
 checkpoint (must be 1084/286) freely.
 
+## State-aware hybrid search through the bridge (`--policy mcts`)
+
+Reactive policies topped out at 0/200 here; the configuration that reached
+parity on the native engine is a *search* agent, which needs the live game
+state — wired 2026-06-06 (run under the repo `.venv`, which also carries the
+pinned catanatron):
+
+```bash
+PYTHONPATH=.:EVAL python -m AB.tournament --policy mcts \
+    --ckpt models/checkpoints/il_ab_d2_vpm/il_final.pt \
+    --games 200 --mcts-sims 512 --model-ab-depth 2 --model-ab-prune \
+    --opponent alphabeta --ab-depth 2 --ab-prune --no-trades --rotate-seats
+```
+
+**Reference results (2026-06-06), hybrid = IL-clone prior + `ab_value`
+leaves (two-scale lexicographic squash, `--ab-value-scale 86e6`):**
+
+| arena | result |
+|---|---|
+| native AB-d1, ≥512 sims (600 g) | **29.0% [25.5–32.8] — above 25% parity** |
+| native AB-d2, 256–512 sims (600 g) | **23.3–23.75% — at parity** (was 0/200 for every reactive policy) |
+| native AB-d2 *pruned* control (40 g) | 17.5% [8.8–32.0] — pruning ≈ no strength change |
+| **bridge** AB-d2 pruned, rotated, 256 sims (100 g) | **5.0% [2.2–11.2]** — first consistent bridge wins ever, but 4–5× below native |
+
+**The open native→bridge transfer gap.** Ruled out by experiment: injected
+value fidelity (`test_native_ab_fidelity.py` passes to machine precision on
+current code), opponent pruning strength, in-tree model depth. Live
+suspects: catanatron-AB behavioral divergence from the native in-tree model
+(the two documented chance-handling deviations + tie-break order — the
+search optimizes against a slightly wrong opponent), sub-prompt decision
+routing through the codec (robber-victim picks), and a bridge-only
+sims-inversion (512 < 256: 0/40 vs 5/100) consistent with deeper search
+exploiting model error harder. Next instrument: replay bridge games and
+diff the in-tree model's predicted opponent moves against catanatron's
+actual moves.
+
 ## Status (2026-05-28)
 
 - [x] PPO→bridge policy adapter (`policy.py`) — smoke: 30/30 legal picks.
@@ -120,5 +157,17 @@ checkpoint (must be 1084/286) freely.
       **0/200 vs AlphaBeta** (`--no-trades`, gate FAIL), a real result (same model
       beats `RandomPlayer` 89.5% through the same bridge). Needs the stronger M3
       self-play model.
+- [x] **Native AB ladder beaten (2026-06-06):** hybrid search above parity vs
+      d1 (29.0% [25.5–32.8]), at parity vs d2 (23.75% [19.8–28.2]) — see the
+      campaign section in the root README for the design rules
+      (dense value targets, neuro-symbolic leaves, sims scaling).
+- [x] State-aware MCTS bridge policy + seat rotation wired (`--policy mcts`,
+      `--rotate-seats`); `Env.recompute_mask()` added for injected states.
+- [~] Official bridge gate: **5/100 = 5.0% [2.2–11.2]** vs AB-d2 (rotated) —
+      first-ever consistent bridge wins (record was 0/200) but the
+      native→bridge transfer gap (4–5×) is the open problem; suspects + ruled-out
+      list above.
+- [ ] Close the transfer gap (model-divergence differential debugging), then
+      re-run the ≥1000-game thesis gate.
 - [ ] Full 10⁸-step soak (smoke green; ~24 min full).
 - [ ] Record thesis-gate result.
