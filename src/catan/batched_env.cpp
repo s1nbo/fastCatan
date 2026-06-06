@@ -195,14 +195,15 @@ void batched_env_write_obs_all4(const BatchedEnv& env, float* out) noexcept {
 }
 
 void batched_env_ab_decide(const BatchedEnv& env, int depth, bool prune,
-                           const uint64_t* banned, uint32_t* out) noexcept {
+                           const uint64_t* banned, uint32_t* out,
+                           int chance_mode) noexcept {
 #if FCATAN_HAVE_OPENMP
     #pragma omp parallel for schedule(dynamic)
 #endif
     for (int32_t i = 0; i < int32_t(env.n); ++i) {
         const GameState& s = env.states[i];
         out[i] = ab_decide(s, env.layouts[i], s.current_player,
-                           depth, prune, nullptr, banned);
+                           depth, prune, nullptr, banned, chance_mode);
     }
 }
 

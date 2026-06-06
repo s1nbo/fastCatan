@@ -263,6 +263,24 @@ Determinism: same seed -> same trajectory. Perft hashes pinned.
         .def("ab_decide",
              [](const PyEnv& e, uint8_t pov, int depth, bool prune,
                 nb::ndarray<uint64_t, nb::ndim<1>, nb::c_contig,
+                            nb::device::cpu> banned_mask,
+                int chance_mode) {
+                 if (banned_mask.shape(0) != MASK_WORDS)
+                     throw std::runtime_error("banned mask length mismatch");
+                 return ab_decide(e.s, e.b, pov, depth, prune, nullptr,
+                                  banned_mask.data(), chance_mode);
+             },
+             nb::arg("pov"), nb::arg("depth"), nb::arg("prune"),
+             nb::arg("banned_mask"), nb::arg("chance_mode"),
+             "Overload with banned-action bitmask AND chance model: "
+             "chance_mode=1 emulates Catanatron's tree_search_utils blur "
+             "(flat-1/5 steals with whiff children, info-set BUY_DEV deck) so "
+             "the search MODELS catanatron's AlphaBeta faithfully — the "
+             "true-fork model mispredicts its robber play (25% agreement; "
+             "model_divergence.py 2026-06-06).")
+        .def("ab_decide",
+             [](const PyEnv& e, uint8_t pov, int depth, bool prune,
+                nb::ndarray<uint64_t, nb::ndim<1>, nb::c_contig,
                             nb::device::cpu> banned_mask) {
                  if (banned_mask.shape(0) != MASK_WORDS)
                      throw std::runtime_error("banned mask length mismatch");

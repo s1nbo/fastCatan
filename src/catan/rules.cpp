@@ -1363,7 +1363,8 @@ static inline void finalize_child(GameState& cs, const BoardLayout& b) noexcept 
 }
 
 int expand_action(const GameState& s, const BoardLayout& b, uint32_t action,
-                  GameState* out_states, double* out_probas) noexcept {
+                  GameState* out_states, double* out_probas,
+                  int chance_mode) noexcept {
     int n = 0;
 
     // --- ROLL: fan out the 11 dice sums (a 7 routes into discard/robber). ---
@@ -1394,6 +1395,34 @@ int expand_action(const GameState& s, const BoardLayout& b, uint32_t action,
             out_states[0] = cs;
             out_probas[0] = 1.0;
             return 1;
+        }
+        if (chance_mode == CHANCE_CATANATRON) {
+            // Info-set deck: remaining deck + every enemy's hidden devs
+            // (tree_search_utils: "possible deck from the perspective of the
+            // current player"). A type absent from the REAL deck yields a
+            // whiff child — their swallowed exception.
+            uint16_t blurred[5];
+            uint16_t blurred_total = 0;
+            for (uint8_t card = 0; card < 5; ++card) {
+                uint16_t c = s.dev_deck[card];
+                for (uint8_t p = 0; p < 4; ++p)
+                    if (p != s.current_player) c += s.player_dev[p][card];
+                blurred[card] = c;
+                blurred_total += c;
+            }
+            for (uint8_t card = 0; card < 5; ++card) {
+                if (blurred[card] == 0) continue;
+                GameState cs = s;
+                if (s.dev_deck[card] > 0) {
+                    pay_to_bank(cs, cs.current_player, COST_DEV);
+                    apply_buy_dev_card(cs, card);
+                }
+                finalize_child(cs, b);
+                out_states[n] = cs;
+                out_probas[n] = double(blurred[card]) / double(blurred_total);
+                ++n;
+            }
+            return n;
         }
         for (uint8_t card = 0; card < 5; ++card) {
             if (s.dev_deck[card] == 0) continue;
@@ -1432,6 +1461,21 @@ int expand_action(const GameState& s, const BoardLayout& b, uint32_t action,
             return 1;
         }
         uint8_t victim = cand[0];
+        if (chance_mode == CHANCE_CATANATRON) {
+            // Flat 1/5 over resource types; a type the victim lacks is a
+            // whiff child (robber moved, nothing stolen).
+            for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+                GameState cs = base;
+                if (base.player_resources[victim][r] > 0)
+                    do_steal_resource(cs, victim, r);
+                cs.flag = Flag::NONE;
+                finalize_child(cs, b);
+                out_states[n] = cs;
+                out_probas[n] = 1.0 / double(NUM_RESOURCES);
+                ++n;
+            }
+            return n;
+        }
         double total = double(base.player_handsize[victim]);  // > 0
         for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
             uint8_t cnt = base.player_resources[victim][r];
@@ -1470,6 +1514,19 @@ int expand_action(const GameState& s, const BoardLayout& b, uint32_t action,
             out_states[0] = cs;
             out_probas[0] = 1.0;
             return 1;
+        }
+        if (chance_mode == CHANCE_CATANATRON) {
+            for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {
+                GameState cs = s;
+                if (s.player_resources[victim][r] > 0)
+                    do_steal_resource(cs, victim, r);
+                cs.flag = Flag::NONE;
+                finalize_child(cs, b);
+                out_states[n] = cs;
+                out_probas[n] = 1.0 / double(NUM_RESOURCES);
+                ++n;
+            }
+            return n;
         }
         double total = double(s.player_handsize[victim]);
         for (uint8_t r = 0; r < NUM_RESOURCES; ++r) {

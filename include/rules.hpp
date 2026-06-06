@@ -14,15 +14,36 @@ namespace catan {
     // Max (state, proba) outcomes expand_action emits: the 11 dice sums 2..12.
     inline constexpr int MAX_EXPAND_OUTCOMES = 11;
 
+    // Chance models for expand_action's stochastic forks.
+    //   CHANCE_TRUE       — fork the TRUE distributions: victim's actual hand
+    //                       for steals, the real remaining deck for BUY_DEV.
+    //                       (More correct than Catanatron; the default.)
+    //   CHANCE_CATANATRON — emulate Catanatron's tree_search_utils blur:
+    //                       steals fork flat 1/5 over the five resource types
+    //                       (a type the victim lacks yields an UNCHANGED
+    //                       "whiff" child, mirroring their swallowed
+    //                       exception); BUY_DEV forks the info-set deck
+    //                       (remaining deck + all enemies' hidden devs), with
+    //                       types absent from the real deck also collapsing to
+    //                       a whiff child. Use this when the search must
+    //                       MODEL Catanatron's AlphaBeta as an opponent — the
+    //                       true-fork model mispredicts its robber play
+    //                       (25.4% agreement vs 85-99% on everything else,
+    //                       EVAL/AB/model_divergence.py 2026-06-06).
+    inline constexpr int CHANCE_TRUE       = 0;
+    inline constexpr int CHANCE_CATANATRON = 1;
+
     // Expectimax expansion used by the alpha-beta search. Writes the weighted
     // child states of applying `action` to (s,b) into out_states / out_probas
     // (caller arrays sized >= MAX_EXPAND_OUTCOMES). Deterministic actions yield
     // one outcome (proba 1); ROLL_DICE, BUY_DEV and robber-steal fan out over
-    // their chance outcomes. Each child gets a freshly recomputed action mask
-    // and phase, so a search can recurse on it directly. `action` must be legal
-    // in `s`. Returns the number of outcomes written. Probabilities sum to 1.
+    // their chance outcomes (per `chance_mode` above). Each child gets a
+    // freshly recomputed action mask and phase, so a search can recurse on it
+    // directly. `action` must be legal in `s`. Returns the number of outcomes
+    // written. Probabilities sum to 1.
     int expand_action(const GameState& s, const BoardLayout& b, uint32_t action,
-                      GameState* out_states, double* out_probas) noexcept;
+                      GameState* out_states, double* out_probas,
+                      int chance_mode = CHANCE_TRUE) noexcept;
 
     // Action ID layout
     namespace action {

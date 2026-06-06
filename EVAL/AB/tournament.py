@@ -110,6 +110,11 @@ def main() -> None:
                    help="prune the IN-TREE opponent model's action set — "
                         "match this to the table's --ab-prune so the search "
                         "models the opponents it actually faces.")
+    p.add_argument("--model-catanatron-chance", action="store_true",
+                   help="in-tree model uses Catanatron's chance blur AND its "
+                        "first-enemy robber pruner (raises opponent-move "
+                        "prediction from 87%% to 92%%, robber 26%%->77%%; "
+                        "see AB/model_divergence.py).")
     p.add_argument("--rotate-seats", action="store_true",
                    help="rotate the agent through all 4 seats (game g -> "
                         "seat g%%4) instead of always RED/seat-0.")
@@ -177,7 +182,9 @@ def main() -> None:
                 leaf_eval=args.leaf_eval,
                 ab_value_scale=args.ab_value_scale,
                 model_ab_depth=args.model_ab_depth,
-                model_ab_prune=args.model_ab_prune, seed=seed)
+                model_ab_prune=args.model_ab_prune,
+                model_catanatron_chance=args.model_catanatron_chance,
+                seed=seed)
         else:
             game_policy = policy
 

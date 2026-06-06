@@ -107,6 +107,7 @@ namespace catan {
     // batched opponent/in-tree-advance primitive for training vs AB — the
     // per-env Python Env round-trip was the throughput killer.
     void batched_env_ab_decide(const BatchedEnv& env, int depth, bool prune,
-                               const uint64_t* banned, uint32_t* out) noexcept;
+                               const uint64_t* banned, uint32_t* out,
+                               int chance_mode = 0) noexcept;
 
 }  // namespace catan

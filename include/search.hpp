@@ -61,8 +61,12 @@ namespace catan {
     //            substitute a uniform-random move (which learners farm).
     // Returns the chosen flat action ID, or 0xFFFFFFFF if no legal action
     // exists (terminal / not pov's decision).
+    //   chance_mode: rules.hpp CHANCE_TRUE (default) or CHANCE_CATANATRON —
+    //            the latter emulates Catanatron's chance blur so the search
+    //            MODELS its AlphaBeta faithfully (robber/steal + BUY_DEV).
     uint32_t ab_decide(const GameState& s, const BoardLayout& b, uint8_t pov,
                        int depth, bool prune, const double* weights,
-                       const uint64_t* banned = nullptr) noexcept;
+                       const uint64_t* banned = nullptr,
+                       int chance_mode = 0) noexcept;
 
 }  // namespace catan

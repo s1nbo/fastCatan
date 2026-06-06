@@ -53,6 +53,7 @@ class MCTSvsFixed:
         leaf_eval: str = "net",
         ab_value_scale: float = 30.0,
         learner_seat: int = LEARNER,
+        catanatron_chance: bool = False,
     ):
         self.net = net
         self.device = device
@@ -69,7 +70,9 @@ class MCTSvsFixed:
         self.learner = learner_seat   # tree decisions + POV (seat rotation)
         self.opp = make_alphabeta_pick(
             self.rng, ab_depth, ab_prune,
-            banned=p2p_banned_words() if suppress_p2p else None)
+            banned=(p2p_banned_words() if (suppress_p2p or catanatron_chance)
+                    else None),
+            chance_mode=1 if catanatron_chance else 0)
 
         self.env = fastcatan.Env()
         self._mask_buf = np.zeros(MASK_WORDS, dtype=np.uint64)

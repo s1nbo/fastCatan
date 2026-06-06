@@ -253,7 +253,8 @@ int legal_actions(const GameState& s, uint32_t* out) noexcept {
 // (Catanatron's maritime-trade prune does not map: fastCatan auto-resolves
 // the best port ratio so there are no dominated 4:1 duplicates to drop.)
 int prune_actions(const GameState& s, const BoardLayout& b,
-                  const uint32_t* in, int nin, uint32_t* out) noexcept {
+                  const uint32_t* in, int nin, uint32_t* out,
+                  int chance_mode = 0) noexcept {
     bool initial = (s.phase == Phase::INITIAL_PLACEMENT_1
                     || s.phase == Phase::INITIAL_PLACEMENT_2);
 
@@ -266,17 +267,31 @@ int prune_actions(const GameState& s, const BoardLayout& b,
 
     uint32_t best_robber = 0xFFFFFFFFu;
     if (have_robber) {
-        // Hexes adjacent to any enemy building.
+        // CHANCE_CATANATRON: replicate prune_robber_actions EXACTLY — it
+        // only ever considers THE FIRST NON-SELF COLOR (a 2-player artifact:
+        // `next(filter(lambda c: c != current_color, colors))`), so pruned
+        // catanatron-AB robs one fixed opponent all game. The native default
+        // spans all enemies (more sensible, but mispredicts catanatron's
+        // robber 75% of the time — model_divergence.py 2026-06-06).
+        uint8_t enemy = uint8_t((s.current_player + 1) & 0x3);
+        bool single_enemy_tiles = false;
+        if (chance_mode == CHANCE_CATANATRON) {
+            enemy = (s.current_player == 0) ? 1 : 0;   // first non-self seat
+            single_enemy_tiles = true;
+        }
+        // Hexes adjacent to enemy buildings (one enemy in faithful mode).
         bool enemy_hex[topology::NUM_HEXES] = {false};
         for (uint8_t node = 0; node < topology::NUM_NODES; ++node) {
             uint8_t nb = s.node[node];
-            if (node_level(nb) == NODE_EMPTY || node_owner(nb) == s.current_player) continue;
+            if (node_level(nb) == NODE_EMPTY) continue;
+            uint8_t owner = node_owner(nb);
+            if (owner == s.current_player) continue;
+            if (single_enemy_tiles && owner != enemy) continue;
             for (uint8_t k = 0; k < topology::MAX_HEXES_PER_NODE; ++k) {
                 uint8_t h = topology::node_to_hex[node][k];
                 if (h != topology::NO_HEX) enemy_hex[h] = true;
             }
         }
-        uint8_t enemy = uint8_t((s.current_player + 1) & 0x3);
         double best_impact = -INF;
         for (int i = 0; i < nin; ++i) {
             if (in[i] < action::MOVE_ROBBER_BASE
@@ -315,7 +330,8 @@ int prune_actions(const GameState& s, const BoardLayout& b,
 }
 
 int get_actions(const GameState& s, const BoardLayout& b, bool prune,
-                const uint64_t* banned, uint32_t* out) noexcept {
+                const uint64_t* banned, uint32_t* out,
+                int chance_mode = 0) noexcept {
     uint32_t legal[NUM_ACTIONS];
     int n = legal_actions(s, legal);
     if (banned && n > 0) {
@@ -332,7 +348,7 @@ int get_actions(const GameState& s, const BoardLayout& b, bool prune,
         for (int i = 0; i < n; ++i) out[i] = legal[i];
         return n;
     }
-    int pn = prune_actions(s, b, legal, n, out);
+    int pn = prune_actions(s, b, legal, n, out, chance_mode);
     if (pn == 0) {  // defensive: never hand the search an empty set
         for (int i = 0; i < n; ++i) out[i] = legal[i];
         return n;
@@ -345,11 +361,12 @@ int get_actions(const GameState& s, const BoardLayout& b, bool prune,
 // exactly as Catanatron's alphabeta does (action-level cutoffs only).
 double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
                  int depth, double alpha, double beta,
-                 const double* W, bool prune, const uint64_t* banned) noexcept {
+                 const double* W, bool prune, const uint64_t* banned,
+                 int chance_mode) noexcept {
     if (depth == 0 || is_terminal(s)) return ab_value(s, b, pov, W);
 
     uint32_t actions[NUM_ACTIONS];
-    int na = get_actions(s, b, prune, banned, actions);
+    int na = get_actions(s, b, prune, banned, actions, chance_mode);
     if (na == 0) return ab_value(s, b, pov, W);
 
     bool maximizing = (s.current_player == pov);
@@ -359,10 +376,11 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
     if (maximizing) {
         double best = -INF;
         for (int i = 0; i < na; ++i) {
-            int nc = expand_action(s, b, actions[i], children, probas);
+            int nc = expand_action(s, b, actions[i], children, probas,
+                                   chance_mode);
             double ev = 0.0;
             for (int j = 0; j < nc; ++j)
-                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
+                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned, chance_mode);
             if (ev > best) best = ev;
             if (best > alpha) alpha = best;
             if (alpha >= beta) break;           // beta cutoff
@@ -371,10 +389,11 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
     } else {
         double best = INF;
         for (int i = 0; i < na; ++i) {
-            int nc = expand_action(s, b, actions[i], children, probas);
+            int nc = expand_action(s, b, actions[i], children, probas,
+                                   chance_mode);
             double ev = 0.0;
             for (int j = 0; j < nc; ++j)
-                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
+                ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned, chance_mode);
             if (ev < best) best = ev;
             if (best < beta) beta = best;
             if (beta <= alpha) break;           // alpha cutoff
@@ -387,7 +406,7 @@ double alphabeta(const GameState& s, const BoardLayout& b, uint8_t pov,
 
 uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
                    int depth, bool prune, const double* weights,
-                   const uint64_t* banned) noexcept {
+                   const uint64_t* banned, int chance_mode) noexcept {
     const double* W = weights ? weights : AB_DEFAULT_WEIGHTS;
 
     // Recompute the root legal-action mask so the search is self-contained and
@@ -397,7 +416,7 @@ uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
     compute_mask(s, b, s.action_mask);
 
     uint32_t actions[NUM_ACTIONS];
-    int na = get_actions(s, b, prune, banned, actions);
+    int na = get_actions(s, b, prune, banned, actions, chance_mode);
     if (na == 0) return 0xFFFFFFFFu;
     if (na == 1) return actions[0];             // Catanatron decide() shortcut
 
@@ -408,10 +427,11 @@ uint32_t ab_decide(const GameState& s_in, const BoardLayout& b, uint8_t pov,
     double probas[MAX_EXPAND_OUTCOMES];
 
     for (int i = 0; i < na; ++i) {
-        int nc = expand_action(s, b, actions[i], children, probas);
+        int nc = expand_action(s, b, actions[i], children, probas,
+                               chance_mode);
         double ev = 0.0;
         for (int j = 0; j < nc; ++j)
-            ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned);
+            ev += probas[j] * alphabeta(children[j], b, pov, depth - 1, alpha, beta, W, prune, banned, chance_mode);
         if (ev > best_value) { best_value = ev; best_action = actions[i]; }
         if (best_value > alpha) alpha = best_value;  // thread alpha (root never cuts; beta=+inf)
     }

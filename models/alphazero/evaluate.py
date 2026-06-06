@@ -65,7 +65,8 @@ def play_game(game_env, mcts: MCTS, rng, p2p_bool, opp_pick=None,
     return -1
 
 
-def make_alphabeta_pick(rng, depth: int, prune: bool, banned=None):
+def make_alphabeta_pick(rng, depth: int, prune: bool, banned=None,
+                        chance_mode: int = 0):
     """Opponent picker using the native C++ AlphaBeta (Env.ab_decide).
 
     ``banned`` (uint64[MASK_WORDS], e.g. mcts.p2p_banned_words() when p2p
@@ -80,8 +81,10 @@ def make_alphabeta_pick(rng, depth: int, prune: bool, banned=None):
     won't be in trade-filtered ``legal`` — all of which fell back to a
     uniform-random move (mirrors models/env.py._opponent_action)."""
     def pick(game_env, cp, legal):
-        a = (game_env.ab_decide(cp, depth, prune, banned)
-             if banned is not None else game_env.ab_decide(cp, depth, prune))
+        if banned is not None:
+            a = game_env.ab_decide(cp, depth, prune, banned, chance_mode)
+        else:
+            a = game_env.ab_decide(cp, depth, prune)
         return a if (a != _NO_ACTION and a in legal) else rng.choice(legal)
     return pick
 
