@@ -201,6 +201,13 @@ def main() -> None:
     p.add_argument("--abv-scale", type=float, default=86e6,
                    help="fine-part tanh scale for ab_two_scale targets; MUST "
                         "match the search's --ab-value-scale (gate: 86e6).")
+    p.add_argument("--value-hidden", type=int, default=128,
+                   help="value-head hidden width (128 was the underfit "
+                        "bottleneck for the two-scale fine channel).")
+    p.add_argument("--value-skip-obs", action="store_true",
+                   help="value head reads [trunk, raw obs] — direct input "
+                        "access for value-only features the policy-shared "
+                        "trunk discards.")
     p.add_argument("--val-frac", type=float, default=0.02)
     p.add_argument("--device", type=str,
                    default="cuda" if torch.cuda.is_available() else "cpu")
@@ -223,7 +230,9 @@ def main() -> None:
     hidden = tuple(int(x) for x in args.hidden.split(",") if x)
     two_scale = args.value_target == "ab_two_scale"
     net = PolicyValueNet(hidden=hidden,
-                         value_channels=2 if two_scale else 1).to(args.device)
+                         value_channels=2 if two_scale else 1,
+                         value_hidden=args.value_hidden,
+                         value_skip_obs=args.value_skip_obs).to(args.device)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr,
                             weight_decay=args.weight_decay)
     steps_per_epoch = len(train_idx) // args.batch_size
