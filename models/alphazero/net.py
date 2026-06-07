@@ -69,6 +69,14 @@ class PolicyValueNet(nn.Module):
         if self.value_channels == 2:
             w = self.TWO_SCALE_W
             value = w[0] * v[..., 0] + w[1] * v[..., 1]
+        elif self.value_channels == 3:
+            # MIXED-FAMILY judge: two-scale heuristic mimicry (channels 0,1 —
+            # information-capped at fine-MSE ~0.026 by hidden enemy state) +
+            # outcome prediction (channel 2, vp_margin) — decorrelated error
+            # sources, equal blend.
+            w = self.TWO_SCALE_W
+            value = 0.5 * (w[0] * v[..., 0] + w[1] * v[..., 1]) \
+                + 0.5 * v[..., 2]
         else:
             value = v.squeeze(-1)
         return self.policy_head(z), value

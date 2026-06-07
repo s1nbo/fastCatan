@@ -157,19 +157,33 @@ def _batch(data, idx, device, value_target="sparse", abv_scale=86e6):
                            "'abv' field (regenerate via il_dataset)")
         z = torch.from_numpy(np.asarray(data["abv"][idx],
                                         dtype=np.float32)).to(device)
-    elif value_target == "ab_two_scale":
-        # Learned judge v2: per-channel regression targets (B, 2) —
-        # tanh(vp_part/3) and tanh(fine_part/abv_scale) recomputed from the
-        # RAW margin. Each channel spans its own [-1,1] and gets FULL loss
-        # weight (train against net.forward_channels); the deploy-time net
-        # recombines 0.75/0.25 inside forward(), matching the hybrid leaf.
+    elif value_target in ("ab_two_scale", "ab_mixed"):
+        # Learned judge v2: per-channel regression targets — tanh(vp_part/3)
+        # and tanh(fine_part/abv_scale) recomputed from the RAW margin. Each
+        # channel spans its own [-1,1] and gets FULL loss weight (train
+        # against net.forward_channels); the deploy-time net recombines
+        # 0.75/0.25 inside forward(), matching the hybrid leaf.
+        # ab_mixed adds the vp_margin OUTCOME channel (decorrelated with the
+        # heuristic-mimicry channels, which are info-capped by hidden enemy
+        # state): forward() blends 0.5*two_scale + 0.5*outcome.
         if "abm" not in data:
-            raise KeyError("value-target ab_two_scale needs v4 shards with "
-                           "the 'abm' field (regenerate via il_dataset)")
+            raise KeyError("value-target ab_two_scale/ab_mixed needs v4 "
+                           "shards with the 'abm' field (regenerate via "
+                           "il_dataset)")
         m = np.asarray(data["abm"][idx], dtype=np.float64)
         vp = np.round(m / VP_W)
         fine = m - vp * VP_W
-        zt = np.stack([np.tanh(vp / 3.0), np.tanh(fine / abv_scale)], axis=1)
+        cols = [np.tanh(vp / 3.0), np.tanh(fine / abv_scale)]
+        if value_target == "ab_mixed":
+            vps = np.asarray(data["vps"][idx], dtype=np.float32)
+            seat = np.asarray(data["seat"][idx], dtype=np.int64)
+            rows = np.arange(len(seat))
+            own = vps[rows, seat]
+            vps_other = vps.copy()
+            vps_other[rows, seat] = -1.0
+            cols.append(np.clip((own - vps_other.max(axis=1)) / 10.0,
+                                -1.0, 1.0))
+        zt = np.stack(cols, axis=1)
         z = torch.from_numpy(zt.astype(np.float32)).to(device)
     else:
         z = torch.from_numpy(np.asarray(data["z"][idx], dtype=np.float32)).to(device)
@@ -187,7 +201,8 @@ def main() -> None:
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--value-coef", type=float, default=1.0)
     p.add_argument("--value-target",
-                   choices=["sparse", "vp_margin", "ab_value", "ab_two_scale"],
+                   choices=["sparse", "vp_margin", "ab_value", "ab_two_scale",
+                            "ab_mixed"],
                    default="sparse",
                    help="vp_margin = dense final-VP margin (needs v2 shards "
                         "with seat field); tests the search-SNR hypothesis. "
@@ -228,9 +243,10 @@ def main() -> None:
           flush=True)
 
     hidden = tuple(int(x) for x in args.hidden.split(",") if x)
-    two_scale = args.value_target == "ab_two_scale"
+    n_channels = {"ab_two_scale": 2, "ab_mixed": 3}.get(args.value_target, 1)
+    multi_v = n_channels > 1
     net = PolicyValueNet(hidden=hidden,
-                         value_channels=2 if two_scale else 1,
+                         value_channels=n_channels,
                          value_hidden=args.value_hidden,
                          value_skip_obs=args.value_skip_obs).to(args.device)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr,
@@ -239,30 +255,30 @@ def main() -> None:
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=args.epochs * steps_per_epoch, eta_min=args.lr * 0.05)
 
-    def evaluate_val() -> tuple[float, float, float | None]:
+    def evaluate_val() -> tuple[float, list[float]]:
+        """Returns (top1, per-channel value MSEs) — one entry for scalar
+        heads, [vp, fine] for ab_two_scale, [vp, fine, outcome] for
+        ab_mixed."""
         net.eval()
         correct = tot = 0
-        vmse = 0.0
-        vmse_fine = 0.0
+        vsum = None
         with torch.no_grad():
             for s in range(0, n_val, args.batch_size):
                 idx = val_idx[s:s + args.batch_size]
                 obs, act, mask, z = _batch(data, idx, args.device,
                                            args.value_target, args.abv_scale)
-                logits, value = (net.forward_channels(obs) if two_scale
+                logits, value = (net.forward_channels(obs) if multi_v
                                  else net(obs))
                 logits = logits.masked_fill(~mask, float("-inf"))
                 correct += int((logits.argmax(dim=1) == act).sum())
                 tot += len(idx)
-                if two_scale:
-                    se = (value - z) ** 2
-                    vmse += float(se[:, 0].sum())
-                    vmse_fine += float(se[:, 1].sum())
-                else:
-                    vmse += float(F.mse_loss(value, z, reduction="sum"))
+                se = (value - z) ** 2
+                if se.dim() == 1:
+                    se = se.unsqueeze(1)
+                bsum = se.sum(dim=0)
+                vsum = bsum if vsum is None else vsum + bsum
         net.train()
-        return correct / tot, vmse / tot, (vmse_fine / tot if two_scale
-                                           else None)
+        return correct / tot, [float(x) / tot for x in vsum]
 
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -275,7 +291,7 @@ def main() -> None:
             idx = np.sort(order[s:s + args.batch_size])
             obs, act, mask, z = _batch(data, idx, args.device,
                                        args.value_target, args.abv_scale)
-            logits, value = (net.forward_channels(obs) if two_scale
+            logits, value = (net.forward_channels(obs) if multi_v
                              else net(obs))
             logits = logits.masked_fill(~mask, float("-inf"))
             policy_loss = F.cross_entropy(logits, act)
@@ -293,15 +309,13 @@ def main() -> None:
                       f"lr={sched.get_last_lr()[0]:.2e} "
                       f"({step*args.batch_size/(time.time()-t0):.0f} smp/s)",
                       flush=True)
-        acc, vmse, vmse_fine = evaluate_val()
-        fine_str = ("" if vmse_fine is None
-                    else f" value-mse-fine={vmse_fine:.4f}")
-        print(f"[ep {ep}] VAL teacher-top1={acc:.4f} value-mse={vmse:.4f}"
-              f"{fine_str}", flush=True)
+        acc, vmses = evaluate_val()
+        ch_names = ["value-mse", "value-mse-fine", "value-mse-out"]
+        msg = " ".join(f"{ch_names[i]}={m:.4f}" for i, m in enumerate(vmses))
+        print(f"[ep {ep}] VAL teacher-top1={acc:.4f} {msg}", flush=True)
         ck = save_dir / f"il_ep{ep}.pt"
         torch.save({"net_state": net.state_dict(), "args": vars(args),
-                    "val_top1": acc, "val_vmse": vmse,
-                    "val_vmse_fine": vmse_fine}, str(ck))
+                    "val_top1": acc, "val_vmse": vmses}, str(ck))
         write_stamp(ck)
 
     final = save_dir / "il_final.pt"
