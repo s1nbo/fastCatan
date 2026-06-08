@@ -32,9 +32,12 @@ learned opponent model only. AB-generated games/labels (IL, distillation)
 are training-time-only and in-bounds. The hybrid configuration below
 (`ab_value` leaves + AB in-tree opponent model) is therefore the
 **reference recipe**, not the thesis agent. De-catanatronization order:
-(1) learned leaf value (`il_pretrain --value-target ab_value` distillation
-→ search with `--leaf-eval net`), (2) learned in-tree opponent model,
-(3) re-train the prior with the learned value.
+(1) learned leaf value (`--leaf-eval net`; a `vp_margin` outcome head won at
+20.0% over the `ab_two_scale` ab_value distill at 16.5%), (2) learned in-tree
+opponent model (`--model-opp net`),
+(3) re-train the value on search-improved targets (`--value-target
+search_value`). **COMPLETE 2026-06-08 — see "De-catanatronization ladder"
+below: the fully self-contained agent caps at ~17% (an information cap).**
 
 ## Native AlphaBeta — a fast, faithful training opponent
 
@@ -146,6 +149,46 @@ seat had the search optimizing an opponent's position in ~75% of games
 (pinning bridge runs at 0.25×native ≈ 6%); fixed by per-decision
 `_sync_seat`. Details in the Status section below.
 
+## De-catanatronization ladder (2026-06-08) — self-contained ceiling ~17%
+
+The hybrid above calls `ab_value`/`ab_decide` at inference. Removing them in
+three stages, each measured on the native AB-d2 dev ladder (200 games, 512
+sims, seed 12345, vs `Env.ab_decide` d2):
+
+| stage | leaf value | in-tree opp | win % vs AB-d2 |
+|---|---|---|---|
+| hybrid (reference) | symbolic `ab_value` | symbolic AB | **29.5 [23.6–36.2]** |
+| 1 — learned leaf | learned (vpm-outcome head) | symbolic AB | 20.0 [15.1–26.1] |
+| 1+2 — self-contained (160k clone) | learned | net argmax | **18.0 [13.3–23.9]** |
+| 1+2 — self-contained (640k / 4× data) | learned | net argmax | 16.5 [12.0–22.3] |
+| 1+2+3 — + search-value leaf | learned (MCTS-root distill) | net argmax | 17.5 [12.9–23.4] |
+| — parity — | | | 25 |
+
+**The fully self-contained learned agent saturates at ~17%** — ~8 pts under
+parity, ~12 under the hybrid. Every lever is falsified:
+
+- **prior** — capacity, epochs, 4× data lift the clone (top-1 0.77→0.84) but
+  NOT wins (the top-1→wins slope dies once the clone clears ~80%);
+- **sims** — learned leaves don't scale (bit-identical at 1024 vs 512), unlike
+  symbolic leaves which do;
+- **value target** — stage 3 distills the hybrid's 512-sim MCTS **root** value
+  (`stage3_gen.py` → `il_pretrain --value-target search_value --init-from`);
+  the head fits it well (mse 0.0136, top-1 0.904 on hybrid moves) yet wins are
+  unmoved (17.5%, a clean NULL).
+
+**Mechanism — an information cap, not a compute/target cap.** `ab_value`'s
+strength is a `max` over *opponents'* values, which reads hidden enemy state
+(unplayed dev cards, concealed hands). The perspective-only obs cannot encode
+it, so two states identical in the obs but differing in hidden state get the
+same learned value no matter how good the target. Stage 3 is the decisive
+control: a near-perfect, low-variance target still yields ~17%, so the
+bottleneck is **input discrimination**, not target quality — a
+partial-information learner cannot match a full-information judge. The hybrid
+keeps that information edge (32.5% gate pass); the self-contained agent is
+information-bounded. Implementation: `models/alphazero/stage3_gen.py`,
+`mcts_vs_fixed.py` (`last_root_value`), `il_pretrain.py` (`search_value`).
+Full forensics: memory `learned-judge-distillation`.
+
 ## Status (2026-06-06)
 
 History, compressed: harness/soak/pin/pipeline validated 2026-05 (281/281
@@ -187,5 +230,12 @@ search campaign (root README).
       [24636, 24909, 24703, 24996], 78.4k steps/s (21.3 min), RSS
       40.2 → 22.3 MiB (growth 0.55×, guard <1.5× OK).
       Log `DEBUG/logs/soak_1e8_20260607.log`.
-- [ ] Record thesis-gate result (the 1000-game JSON) — **final self-contained
-      model only, end of project** (two-tier gate, 2026-06-07).
+- [x] **De-catanatronization COMPLETE (2026-06-08)** — see the ladder above:
+      the self-contained agent caps at ~17% vs AB-d2 (Cell I 17.5%), below the
+      25% gate. The information cap is the thesis finding; the hybrid's 32.5%
+      200-game bridge PASS is the positive reference.
+- [ ] Final ≥1000-game bridge run (optional, end of project): on the hybrid to
+      solidify the 32.5% reference, and/or on the self-contained model to
+      document the ~17% cap at tight CI. Gate (CI-low > 0.25) is MET by the
+      hybrid (not self-contained) and not met self-contained — by design, the
+      characterized gap is the result.

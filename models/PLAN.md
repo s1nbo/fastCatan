@@ -68,8 +68,12 @@
 >   `opponent=` arg. Throughput (single env): random ~51k steps/s, **depth-1 ~45k**
 >   (≈ catanatron ValueFunctionPlayer — nearly free, already 100% vs a random
 >   learner), depth-2 ~5k (~10× slower). **Use depth-1** as the workhorse;
->   depth-2/`--ab-prune` for a harder curriculum. Whether this transfers to the M4
->   bridge gate is the open question — now finally runnable.
+>   depth-2/`--ab-prune` for a harder curriculum. Whether this transferred to the M4
+>   bridge gate — **RESOLVED (2026-06): it did NOT (PPO trained directly vs
+>   native AB → 0/500); what cracked the gate was search at inference — the
+>   AlphaZero/MCTS hybrid passed the bridge gate (32.5% vs AB-d2). The fully
+>   self-contained learned agent caps at ~17% (information cap). See root
+>   `PLAN.md` §M4 + `EVAL/AB/README.md`.**
 >
 > **M2 GATE: MET ✅** stall-cap fix → retrained 50M on the 1084/286 build
 > (`ppo_1084_50m`) → gate passed: **95.5%** vs random native (200g, sampling,

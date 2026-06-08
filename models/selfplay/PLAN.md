@@ -297,7 +297,11 @@ Findings:
       real wall not a bridge artifact; (2) put AlphaBeta/value bots INTO the
       opponent pool (currently PPO-snapshots only); (3) MCTS/AlphaZero search at
       inference (policy net as prior).** See memory `m4-alphabeta-blocked-on-m3` +
-      `selfplay-200m-league-run`.
+      `selfplay-200m-league-run`. **RESOLVED (2026-06): lever (3) cracked it —
+      the AlphaZero/MCTS hybrid passed the bridge gate (32.5% vs AB-d2,
+      2026-06-06); levers (1)(2) stayed walls (PPO-vs-native-AB → 0/500). The
+      fully self-contained de-cat agent then capped at ~17% (information cap).
+      See root `PLAN.md` §M4 + `EVAL/AB/README.md`.**
 - **artifacts:** `checkpoints/sp_league_200m_512/` (200M run: 4 snaps +
   selfplay_final.zip + gate_log.jsonl + league_state.json). Older smoke ckpts in
   `checkpoints/sp_smoke_{1m,5m}/` (untracked scratch, safe to delete).

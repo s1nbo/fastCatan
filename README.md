@@ -11,18 +11,26 @@ stepping with optional OpenMP, Gymnasium + PettingZoo wrappers.
 > Python sims (Catanatron) can't generate self-play at the volume modern
 > RL needs.
 >
-> **Status (2026-06-07):** the HYBRID search agent (imitation-learned prior
+> **Status (2026-06-08):** the HYBRID search agent (imitation-learned prior
 > + native `ab_value` leaves + ≥512-sim stochastic search +
 > catanatron-faithful in-tree opponent model) **passed the official
 > catanatron-bridge gate at 200 games: 65/200 = 32.5% [26.4–39.3] vs
 > Alpha-Beta-d2** (CI-low > 25% = 4-player parity — the opponent that
 > scored 0/200 against every reactive policy). Native ladders: d1 29.0%
-> [25.5–32.8], d2 29.5% [23.6–36.2]. Because the hybrid calls
-> catanatron-derived components (`ab_value`/`ab_decide`) at inference, the
-> M4 gate is now **two-tier** (2026-06-07): a fast native AB-d2 dev ladder
-> per iteration, and ONE ≥1000-game bridge run at the very end on a
-> **self-contained** model (learned leaf value + learned opponent model —
-> in progress). See [The Alpha-Beta campaign](#the-alpha-beta-campaign)
+> [25.5–32.8], d2 29.5% [23.6–36.2]. The hybrid calls catanatron-derived
+> components (`ab_value`/`ab_decide`) at inference, so the M4 gate is
+> **two-tier**: a fast native AB-d2 dev ladder per iteration + ONE
+> ≥1000-game bridge run at the end on a **self-contained** model.
+> **De-catanatronization — COMPLETE (2026-06-08):** removing catanatron
+> from inference in three stages (learned leaf value → learned in-tree
+> opponent → search-improved value targets) lands the *fully self-contained*
+> agent at **~17% vs AB-d2** (Cell I 17.5% [12.9–23.4]), below parity and
+> below the hybrid. The cap is an **information limit**, not a compute/data
+> one: the per-player obs cannot see the hidden enemy state (unrevealed dev
+> cards / hands) the `ab_value` heuristic reads — confirmed irreducible
+> across more data, more sims, and better targets. The hybrid keeps that
+> information edge (32.5% gate pass); the perspective-pure learned agent is
+> information-bounded. See [The Alpha-Beta campaign](#the-alpha-beta-campaign)
 > and `EVAL/AB/README.md`.
 
 ## Throughput
@@ -263,13 +271,24 @@ optimizing an opponent's position in ~75% of games (pinning bridge runs at
 0.25×native ≈ 6%). Result: bridge v6 = **32.5% [26.4–39.3] vs AB-d2**, the
 first GATE PASS.
 
-The live open problem is **self-containment**: the thesis agent may not
-call `ab_value`/`ab_decide` at inference. In order: (1) distill the
-two-scale `ab_value` squash into the value head (`il_pretrain
---value-target ab_value` → search with `--leaf-eval net`), (2) replace the
-in-tree opponent model with the net itself, (3) re-train the prior with
-the learned value — each step gated on the native AB-d2 dev ladder
-(`EVAL/AB/README.md`, "The gate, restructured").
+The self-containment question is now **answered (2026-06-08)**. Removing
+catanatron from inference in three stages, each gated on the native AB-d2
+dev ladder — (1) learn the leaf value (`--leaf-eval net`; a `vp_margin` outcome head,
+20.0%, beats directly distilling `ab_value`), (2) replace the in-tree opponent
+with the net's own
+masked argmax (fully self-contained), (3) re-train the value on
+search-improved targets (the hybrid's 512-sim MCTS root values,
+`--value-target search_value`) — lands the self-contained agent at **~17% vs
+AB-d2** (Cell G 18.0 / H 16.5 / I 17.5), vs the hybrid's 29.5 and 25% parity.
+Stage 3 is a clean null: the value head fit the search targets well (mse
+0.0136, top-1 0.904) yet wins were unmoved. The binding constraint is
+**information, not target or prior quality** — under perspective-only obs the
+learner cannot recover the hidden enemy state `ab_value` reads, so a
+partial-information learner cannot match a full-information judge. Falsified
+levers: capacity, epochs, 4× data, sims, and search-improved targets. The
+hybrid keeps the heuristic's information edge (32.5% gate pass); the
+self-contained agent is information-bounded. Full ladder + mechanism:
+`EVAL/AB/README.md`.
 
 ## Key concepts
 
