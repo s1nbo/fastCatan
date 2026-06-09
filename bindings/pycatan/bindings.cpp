@@ -64,6 +64,9 @@ struct PyEnv {
     uint8_t bank(uint8_t r) const noexcept { return s.bank[r]; }
     uint8_t longest_road_owner() const noexcept { return s.longest_road_owner; }
     uint8_t largest_army_owner() const noexcept { return s.largest_army_owner; }
+    uint8_t trade_give(uint8_t r) const noexcept { return s.trade_give[r]; }
+    uint8_t trade_want(uint8_t r) const noexcept { return s.trade_want[r]; }
+    uint8_t trade_compose_count() const noexcept { return s.trade_compose_count; }
 
     // Snapshot/restore as Python bytes. Used by alpha-beta search to
     // branch state without committing to one path.
@@ -222,6 +225,15 @@ Determinism: same seed -> same trajectory. Perft hashes pinned.
              "Bank stock for the given resource.")
         .def_prop_ro("longest_road_owner", &PyEnv::longest_road_owner,
              "Player holding longest road or 255 if none.")
+        .def("trade_give", &PyEnv::trade_give, nb::arg("r"),
+             "Proposer's offered count of resource r in the in-flight p2p "
+             "offer (0 outside composition).")
+        .def("trade_want", &PyEnv::trade_want, nb::arg("r"),
+             "Proposer's requested count of resource r in the in-flight p2p "
+             "offer (0 outside composition).")
+        .def_prop_ro("trade_compose_count", &PyEnv::trade_compose_count,
+             "P2p trade-compose actions taken this turn (the C++ "
+             "MAX_TRADE_COMPOSE_PER_TURN churn counter).")
         .def_prop_ro("largest_army_owner", &PyEnv::largest_army_owner,
              "Player holding largest army or 255 if none.")
         // Snapshot/restore for state branching (alpha-beta search etc).

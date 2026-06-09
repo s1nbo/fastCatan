@@ -1,0 +1,84 @@
+{
+  "experiment": "3xPPO_vs_1xAlphaBeta",
+  "timestamp": "2026-06-10T00:02:26",
+  "ckpt": "models/checkpoints/sp_league_200m_512/selfplay_final.zip",
+  "policy": "ppo",
+  "algo": "ppo",
+  "n_agents": 3,
+  "n_ab": 1,
+  "mcts_sims": null,
+  "leaf_eval": null,
+  "ab_value_scale": null,
+  "model_ab_depth": null,
+  "model_ab_prune": null,
+  "model_catanatron_chance": null,
+  "trade_add_cap": null,
+  "mcts_fallbacks": null,
+  "mcts_decisions": null,
+  "deterministic": false,
+  "enable_trades": true,
+  "max_offers_per_turn": 5,
+  "rotate_ab_seat": true,
+  "ab_depth": 1,
+  "ab_prune": false,
+  "seed": 7,
+  "pythonhashseed": "0",
+  "games": 2,
+  "decided": 2,
+  "no_winner": 0,
+  "ab_wins": 2,
+  "ab_win_rate": 1.0,
+  "ab_ci95": [
+    0.34237195288961925,
+    1.0
+  ],
+  "ab_fair_share": 0.25,
+  "agent_wins": 0,
+  "agent_win_rate": 0.0,
+  "agent_ci95": [
+    0.0,
+    0.6576280471103807
+  ],
+  "agent_per_seat_rate": 0.0,
+  "per_seat_fair_share": 0.25,
+  "seat_wins": {
+    "RED": 1,
+    "BLUE": 1,
+    "ORANGE": 0,
+    "WHITE": 0
+  },
+  "ab_seat_wins": {
+    "RED": 1,
+    "BLUE": 1,
+    "ORANGE": 0,
+    "WHITE": 0
+  },
+  "ab_seat_games": {
+    "RED": 1,
+    "BLUE": 1,
+    "ORANGE": 0,
+    "WHITE": 0
+  },
+  "trades_total": {
+    "offers": 51,
+    "confirms": 8,
+    "accepts": 8,
+    "rejects": 185,
+    "cancels": 0,
+    "maritime": 11,
+    "ab_accepts": 0,
+    "maritime_ab": 8
+  },
+  "trades_per_game": {
+    "offers": 25.5,
+    "confirms": 4.0,
+    "accepts": 4.0,
+    "rejects": 92.5,
+    "cancels": 0.0,
+    "maritime": 5.5,
+    "ab_accepts": 0.0,
+    "maritime_ab": 4.0
+  },
+  "elapsed_s": 1.5888624540000365,
+  "s_per_game": 0.7944312270000182
+}

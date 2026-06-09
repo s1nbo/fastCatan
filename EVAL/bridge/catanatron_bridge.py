@@ -125,6 +125,11 @@ class CatanatronBridge(Player):
         # state.num_turns, which is distinct per player-turn.
         self._offer_turn = -1
         self._offers_this_turn = 0
+        # In-flight compose scratch (give, want freqdecks), set only for the
+        # duration of each _decide_compose policy call. State-aware policies
+        # replay it onto their injected root (see MctsStatePolicy); plain
+        # (obs, mask, rng) policies never read it.
+        self._compose_scratch = None
 
     def decide(self, game: Game, playable_actions):
         # Stash for state-aware policies (e.g. AB/mcts_policy.MctsStatePolicy
@@ -352,7 +357,11 @@ class CatanatronBridge(Player):
                 mask_set.add(_a.TRADE_OPEN)
 
             mask = sorted(mask_set)
-            chosen = self._policy(obs, mask, self._rng)
+            self._compose_scratch = (list(scratch_give), list(scratch_want))
+            try:
+                chosen = self._policy(obs, mask, self._rng)
+            finally:
+                self._compose_scratch = None
             if chosen not in mask_set:
                 chosen = self._rng.choice(mask)
 

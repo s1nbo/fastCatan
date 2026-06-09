@@ -115,6 +115,13 @@ def main() -> None:
                         "first-enemy robber pruner (raises opponent-move "
                         "prediction from 87%% to 92%%, robber 26%%->77%%; "
                         "see AB/model_divergence.py).")
+    p.add_argument("--model-opp", choices=["alphabeta", "net"],
+                   default="alphabeta",
+                   help="IN-TREE opponent model: 'net' = the clone's own "
+                        "argmax + value-head trade responses (stage-2 "
+                        "de-cat; with --leaf-eval net the agent is FULLY "
+                        "SELF-CONTAINED — no ab_value/ab_decide at "
+                        "inference).")
     p.add_argument("--rotate-seats", action="store_true",
                    help="rotate the agent through all 4 seats (game g -> "
                         "seat g%%4) instead of always RED/seat-0.")
@@ -189,6 +196,8 @@ def main() -> None:
                 model_ab_depth=args.model_ab_depth,
                 model_ab_prune=args.model_ab_prune,
                 model_catanatron_chance=args.model_catanatron_chance,
+                opp_model=args.model_opp,
+                enable_trades=enable_trades,
                 seed=seed)
         else:
             game_policy = policy
@@ -246,6 +255,7 @@ def main() -> None:
                            if args.policy == "mcts" else None),
         "model_ab_depth": (args.model_ab_depth
                            if args.policy == "mcts" else None),
+        "model_opp": args.model_opp if args.policy == "mcts" else None,
         "rotate_seats": args.rotate_seats,
         "mcts_fallbacks": mcts_fallbacks if args.policy == "mcts" else None,
         "mcts_decisions": mcts_decisions if args.policy == "mcts" else None,

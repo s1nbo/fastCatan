@@ -35,6 +35,7 @@ import torch
 import fastcatan
 
 from bridge.state_inject import inject
+from models.alphazero.mcts import MASK_WORDS
 from models.alphazero.mcts_vs_fixed import MCTSvsFixed
 
 
@@ -49,20 +50,33 @@ class MctsStatePolicy:
         model_ab_depth: int = 1,
         model_ab_prune: bool = False,
         model_catanatron_chance: bool = False,
+        opp_model: str = "alphabeta",
         c_puct: float = 1.5,
         seed: int = 0,
         device: str = "cpu",
+        enable_trades: bool = False,
+        trade_prior_frac: float = 0.05,
+        trade_add_cap: int = 3,
     ):
         self.bridge = None              # wired after bridge construction
         self.seat = seat
         self.env = fastcatan.Env()
+        # enable_trades: the search composes p2p offers at its OWN nodes
+        # (in-tree opponents still never offer — they only respond, like the
+        # trade-aware table AB). Keep this in sync with the bridge's
+        # enable_trades: trades on at the bridge but off here would leave the
+        # compose ids permanently unvisited (zero prior mass).
+        self.enable_trades = enable_trades
         self.mcts = MCTSvsFixed(
             net, device=device, sims=sims, c_puct=c_puct,
             dirichlet_frac=0.0, seed=seed, suppress_p2p=True,
+            learner_trades=enable_trades, trade_prior_frac=trade_prior_frac,
+            trade_add_cap=trade_add_cap,
             ab_depth=model_ab_depth, ab_prune=model_ab_prune,
             catanatron_chance=model_catanatron_chance,
-            leaf_eval=leaf_eval,
+            leaf_eval=leaf_eval, opp_model=opp_model,
             ab_value_scale=ab_value_scale, learner_seat=seat)
+        self._mask_buf = np.zeros(MASK_WORDS, dtype=np.uint64)
         self.fallbacks = 0
         self.decisions = 0
 
@@ -78,6 +92,37 @@ class MctsStatePolicy:
             self.seat = seat
         self.mcts.learner = seat
 
+    def _legal_bit(self, aid: int) -> bool:
+        self.env.action_mask(self._mask_buf)
+        return bool((int(self._mask_buf[aid >> 6]) >> (aid & 63)) & 1)
+
+    def _replay_compose_scratch(self) -> bool:
+        """Advance the injected root through the bridge's in-flight offer
+        scratch (give/want adds stashed by _decide_compose) so the search
+        continues the TRUE partial offer instead of restarting composition
+        each prompt. Every replayed id is legality-checked against the native
+        mask; any mismatch reverts to the fresh pre-compose root."""
+        scratch = getattr(self.bridge, "_compose_scratch", None)
+        if not scratch:
+            return False
+        give, want = scratch
+        if not (sum(give) or sum(want)):
+            return False
+        _a = fastcatan.action
+        ids = [_a.TRADE_ADD_GIVE_BASE + r for r in range(5)
+               for _ in range(give[r])]
+        ids += [_a.TRADE_ADD_WANT_BASE + r for r in range(5)
+                for _ in range(want[r])]
+        snap = self.env.snapshot()
+        for aid in ids:
+            if not self._legal_bit(aid):
+                self.env.load_snapshot(snap)
+                self.env.recompute_mask()
+                return False
+            self.env.step(aid)
+        self.env.recompute_mask()
+        return True
+
     def __call__(self, obs: np.ndarray, mask: "list[int]",
                  rng: random.Random) -> int:
         self.decisions += 1
@@ -92,10 +137,23 @@ class MctsStatePolicy:
         # embeds it — recompute before snapshotting or every root step is a
         # masked-off no-op (the 39/41-fallback smoke bug).
         self.env.recompute_mask()
+        replayed = (self._replay_compose_scratch()
+                    if self.enable_trades else False)
         action, pi, _root_mask = self.mcts.choose(
             self.env.snapshot(), temperature=0.0, add_root_noise=False)
         if action in mask:
             return int(action)
+        if replayed:
+            # The mid-compose continuation it chose (e.g. TRADE_CANCEL =
+            # abandon the offer) has no bridge id at this prompt. Re-search
+            # from the fresh pre-compose root, whose action set projects
+            # into the bridge mask (regular moves included).
+            inject(self.env, game)
+            self.env.recompute_mask()
+            action, pi, _root_mask = self.mcts.choose(
+                self.env.snapshot(), temperature=0.0, add_root_noise=False)
+            if action in mask:
+                return int(action)
         # Sub-prompt shape mismatch: best searched action within the
         # bridge's mask.
         best = max(mask, key=lambda f: pi[f])

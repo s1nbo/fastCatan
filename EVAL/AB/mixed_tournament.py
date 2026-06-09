@@ -1,29 +1,44 @@
-"""Mixed-table experiment: 3 trade-capable PPO bridges vs 1 Alpha-Beta.
+"""Mixed-table experiment: N trade-capable trained seats vs (4-N) Alpha-Beta.
 
 The standard thesis run (`AB.tournament`) seats ONE trained agent against THREE
-AlphaBeta bots and asks "can the agent beat AlphaBeta?". This driver inverts the
-table: THREE copies of a trained fastcatan policy (default: the 200M self-play
-league checkpoint, trade-compose enabled so the agents can deal with each other)
-share a table with a SINGLE `AlphaBetaPlayer`. The question becomes "outnumbered
-3-to-1, how does AlphaBeta fare against a table of trained traders, and how does
-that move the win rate off the 0.25 fair-share baseline?".
+AlphaBeta bots and asks "can the agent beat AlphaBeta?". This driver flips the
+ratio: `--n-agents` copies of a trained fastcatan policy (PPO bridge or the
+hybrid MCTS search agent) share a table with the remaining AlphaBeta seats —
+3v1 (`--n-agents 3`) or 2v2 (`--n-agents 2`). Trades are ON by default: the
+trained seats can deal with EACH OTHER — the one capability AlphaBeta
+structurally lacks (it never offers; it can only respond). The question:
+does a trading table suppress AlphaBeta below its fair seat share, and how
+much of that is the trading itself (`--no-trades` ablation, same table)?
 
-The three PPO seats all run the *same* loaded model object (one
-`build_policy(...)` call, shared closure). Catanatron drives the game
-single-threaded so the shared model is queried serially — safe. Sampling
-(`deterministic=False`, the validated eval mode) makes the three otherwise
-identical agents diverge in play.
+Policies:
+  --policy ppo  (default) — reactive SB3 checkpoint via AB/policy.build_policy;
+                all trained seats share one loaded model (serial queries, safe).
+                Sampling mode makes the otherwise identical seats diverge.
+  --policy mcts — the hybrid search agent (AB/mcts_policy.MctsStatePolicy):
+                IL prior + ab_value leaves + in-tree AB opponent model. One
+                net is shared; each trained seat gets its OWN policy instance
+                (per-seat envs + TRUE-seat sync). With trades enabled the
+                search composes offers natively in-tree (learner_trades).
 
-Seat fairness: the lone AlphaBeta is rotated across all four colors over the
-game series (`--rotate`, default on) so AlphaBeta and the PPO agents each occupy
-every seat colour an equal number of times. Catanatron additionally shuffles
-turn order per game, so neither colour nor turn position biases the aggregate.
+Seat fairness: the AlphaBeta block is rotated across colors over the series
+(`--rotate`, default on); catanatron additionally shuffles turn order per
+game, so neither color nor turn position biases the aggregate.
 
-Usage (from repo root, anaconda env — see AB/REPRODUCIBILITY.md):
+Metrics: AlphaBeta block win rate vs its fair share ((4-N)/4 of decided
+games), per-trained-seat rate vs 0.25, full p2p/maritime trade tallies.
 
+Usage (from repo root, conda env `catan` — see AB/REPRODUCIBILITY.md):
+
+    # 3v1, PPO traders (the 2026-06-01 experiment):
     PYTHONHASHSEED=0 PYTHONPATH=EVAL python -m AB.mixed_tournament \
         --games 200 --ab-depth 2 --ab-prune --seed 42
 
+    # 2v2, hybrid search seats, gate-config search (slow: 2 MCTS seats/game):
+    PYTHONHASHSEED=0 PYTHONPATH=EVAL python -m AB.mixed_tournament \
+        --n-agents 2 --policy mcts --mcts-sims 512 --model-ab-depth 2 \
+        --model-ab-prune --ab-depth 2 --ab-prune --games 200 --seed 42
+
+    # trades-off ablation of either: add --no-trades
     # smoke:
     PYTHONHASHSEED=0 PYTHONPATH=EVAL python -m AB.mixed_tournament --games 5
 
@@ -113,26 +128,51 @@ class TradeAwareAlphaBeta(AlphaBetaPlayer):
                 return a
         return playable_actions[0]
 
-# 200M self-play league checkpoint (1084/286). The "3 trained models" are 3
-# instances of this one agent — it is the only 200M checkpoint in the repo.
-DEFAULT_CKPT = "models/checkpoints/sp_league_200m_512/selfplay_final.zip"
-FAIR_SHARE = 0.25  # 4-player chance baseline (1 of 4 seats)
+# 200M self-play league checkpoint (1084/286) — the strongest trade-trained
+# reactive agent in the repo. For --policy mcts the default is the gate-run
+# IL prior (the 32.5% hybrid's net).
+DEFAULT_PPO_CKPT = "models/checkpoints/sp_league_200m_512/selfplay_final.zip"
+DEFAULT_MCTS_CKPT = "models/checkpoints/il_ab_d2_160k_vpm/il_final.pt"
+FAIR_SHARE = 0.25  # per-seat chance baseline (1 of 4 seats)
 
 
-def build_players(ab_color: Color, policy, enable_trades: bool,
-                  ab_depth: int, ab_prune: bool, game_seed: int):
-    """One AlphaBetaPlayer at `ab_color`; the other three seats are PPO bridges
-    sharing `policy`. Each bridge gets a distinct RNG seed so their fallback /
-    compose tie-breaks do not lock-step."""
-    players = []
+def build_players(ab_colors, args, policy, mcts_net, game_seed: int):
+    """AlphaBeta at every color in `ab_colors`; the other seats are trained
+    bridges. PPO seats share `policy`; MCTS seats each get their own
+    state-aware policy instance (TRUE seat is re-synced live every decision).
+    Distinct per-seat RNG seeds keep fallback / compose tie-breaks from
+    lock-stepping. Returns (players, mcts_policies)."""
+    enable_trades = not args.no_trades
+    players, mcts_policies = [], []
     for i, c in enumerate(COLORS):
-        if c == ab_color:
-            players.append(TradeAwareAlphaBeta(c, depth=ab_depth, prunning=ab_prune))
+        if c in ab_colors:
+            players.append(TradeAwareAlphaBeta(
+                c, depth=args.ab_depth, prunning=args.ab_prune))
+            continue
+        if args.policy == "mcts":
+            from AB.mcts_policy import MctsStatePolicy
+            game_policy = MctsStatePolicy(
+                mcts_net, seat=i, sims=args.mcts_sims,
+                leaf_eval=args.leaf_eval,
+                ab_value_scale=args.ab_value_scale,
+                model_ab_depth=args.model_ab_depth,
+                model_ab_prune=args.model_ab_prune,
+                model_catanatron_chance=args.model_catanatron_chance,
+                opp_model=args.model_opp,
+                enable_trades=enable_trades,
+                trade_add_cap=args.trade_add_cap,
+                seed=game_seed * 4 + i)
+            mcts_policies.append(game_policy)
         else:
-            players.append(CatanatronBridge(
-                c, policy=policy, seed=game_seed * 4 + i,
-                enable_trades=enable_trades))
-    return players
+            game_policy = policy
+        bridge = CatanatronBridge(
+            c, policy=game_policy, seed=game_seed * 4 + i,
+            enable_trades=enable_trades,
+            max_offers_per_turn=args.max_offers_per_turn)
+        if args.policy == "mcts":
+            game_policy.bridge = bridge      # state-aware wiring
+        players.append(bridge)
+    return players, mcts_policies
 
 
 # Trade action types tallied from the post-game action log. OFFER_TRADE =
@@ -151,11 +191,11 @@ _TRADE_KEYS = (list(dict.fromkeys(_TRADE_COUNT_TYPES.values()))
                + ["ab_accepts", "maritime_ab"])
 
 
-def tally_trades(game, ab_color) -> dict:
+def tally_trades(game, ab_colors) -> dict:
     """Count trade actions in a finished game's action log. Offers/confirms are
-    inherently all-PPO (AlphaBeta never offers); `maritime_ab` splits out the
-    lone AB's bank trades so the rest is the PPO seats'. `ab_accepts` = times AB
-    accepted a domestic offer."""
+    inherently all-trained-seats (AlphaBeta never offers); `maritime_ab` splits
+    out the AB block's bank trades. `ab_accepts` = times any AB accepted a
+    domestic offer."""
     out = {k: 0 for k in _TRADE_KEYS}
     for rec in game.state.action_records:
         a = rec.action
@@ -163,7 +203,7 @@ def tally_trades(game, ab_color) -> dict:
         if key is None:
             continue
         out[key] += 1
-        if a.color == ab_color:
+        if a.color in ab_colors:
             if a.action_type == ActionType.ACCEPT_TRADE:
                 out["ab_accepts"] += 1
             elif a.action_type == ActionType.MARITIME_TRADE:
@@ -173,25 +213,67 @@ def tally_trades(game, ab_color) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--ckpt", type=str, default=DEFAULT_CKPT,
-                   help="checkpoint for the 3 PPO bridge seats")
+    p.add_argument("--ckpt", type=str, default=None,
+                   help="checkpoint for the trained seats (default: "
+                        f"{DEFAULT_PPO_CKPT} for ppo, "
+                        f"{DEFAULT_MCTS_CKPT} for mcts)")
+    p.add_argument("--policy", default="ppo", choices=["ppo", "mcts"],
+                   help="'mcts' = state-aware hybrid search per trained seat "
+                        "(AB/mcts_policy; --ckpt is the IL .pt)")
     p.add_argument("--algo", default="ppo", choices=["ppo"])
+    p.add_argument("--n-agents", type=int, default=3, choices=[1, 2, 3],
+                   help="trained seats at the table; the other 4-N are "
+                        "AlphaBeta (3 = 3v1, 2 = 2v2)")
     p.add_argument("--games", type=int, default=200)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--ab-depth", type=int, default=2)
     p.add_argument("--ab-prune", action="store_true",
                    help="enable AlphaBeta action pruning (recommended)")
+    # MCTS knobs — mirror AB/tournament.py exactly.
+    p.add_argument("--mcts-sims", type=int, default=512)
+    p.add_argument("--leaf-eval", choices=["net", "ab_value"],
+                   default="ab_value")
+    p.add_argument("--ab-value-scale", type=float, default=86e6)
+    p.add_argument("--model-ab-depth", type=int, default=1,
+                   help="depth of the IN-TREE opponent model (native AB); "
+                        "independent of the actual table opponents.")
+    p.add_argument("--model-ab-prune", action="store_true",
+                   help="prune the IN-TREE opponent model's action set — "
+                        "match this to the table's --ab-prune.")
+    p.add_argument("--model-catanatron-chance", action="store_true",
+                   help="in-tree model uses Catanatron's chance blur + "
+                        "first-enemy robber pruner (see AB/model_divergence).")
+    p.add_argument("--model-opp", choices=["alphabeta", "net"],
+                   default="alphabeta",
+                   help="IN-TREE opponent model: 'net' = the clone's own "
+                        "argmax + value-head trade responses (stage-2 "
+                        "de-cat; with --leaf-eval net the seats are FULLY "
+                        "SELF-CONTAINED — no ab_value/ab_decide at "
+                        "inference).")
+    p.add_argument("--trade-add-cap", type=int, default=3,
+                   help="max cards per side of an in-tree composed offer "
+                        "(bounds compose-churn arms; mcts only)")
     p.add_argument("--deterministic", action="store_true",
-                   help="argmax policy (default: sample; see AB/policy.py)")
+                   help="argmax ppo policy (default: sample; mcts is always "
+                        "argmax-by-visits)")
     p.add_argument("--no-trades", action="store_true",
-                   help="disable the bridge OFFER_TRADE compose loop "
-                        "(default: trades ON — the point of this experiment)")
+                   help="disable p2p trading at the trained seats — the "
+                        "ablation arm (default: trades ON, the point of "
+                        "this experiment)")
+    p.add_argument("--max-offers-per-turn", type=int, default=5,
+                   help="bridge cap on OFFER_TRADE emissions per turn per "
+                        "seat (anti-spam; the search tries a trade whenever "
+                        "it beats END_TURN, so keep this small)")
     p.add_argument("--no-rotate", action="store_true",
-                   help="pin AlphaBeta to RED instead of rotating seats")
+                   help="pin the AlphaBeta block to the first colors instead "
+                        "of rotating it across seats")
     p.add_argument("--out", type=str, default="EVAL/AB/results")
     p.add_argument("--progress-every", type=int, default=10)
     args = p.parse_args()
 
+    if args.ckpt is None:
+        args.ckpt = (DEFAULT_MCTS_CKPT if args.policy == "mcts"
+                     else DEFAULT_PPO_CKPT)
     ckpt = Path(args.ckpt)
     if not ckpt.exists():
         raise FileNotFoundError(ckpt)
@@ -208,66 +290,105 @@ def main() -> None:
         print("[warn] PYTHONHASHSEED unset — run is NOT bit-reproducible "
               "(catanatron RNG + set order depend on it).")
 
-    policy = build_policy(args.algo, ckpt, deterministic=args.deterministic)
+    n = args.n_agents
+    k = 4 - n
+    policy = mcts_net = None
+    if args.policy == "mcts":
+        import torch
+        from models.alphazero.net import load_policy_value_net
+        state = torch.load(str(ckpt), map_location="cpu", weights_only=False)
+        mcts_net = load_policy_value_net(state, "cpu")
+    else:
+        policy = build_policy(args.algo, ckpt,
+                              deterministic=args.deterministic)
     enable_trades = not args.no_trades
     rotate = not args.no_rotate
+    ab_fair = k / 4.0
 
     wins = {c: 0 for c in COLORS}
-    ab_wins = 0          # games won by the lone AlphaBeta (any rotated seat)
-    ppo_wins = 0         # games won by one of the 3 PPO seats
+    ab_wins = 0          # games won by the AlphaBeta block (any of its seats)
+    agent_wins = 0       # games won by one of the trained seats
     no_winner = 0
-    ab_seat_wins = {c: 0 for c in COLORS}   # AB win rate broken out by its seat
+    ab_seat_wins = {c: 0 for c in COLORS}   # AB wins broken out by seat color
     ab_seat_games = {c: 0 for c in COLORS}
-    trade_tot = {k: 0 for k in _TRADE_KEYS}
+    trade_tot = {k_: 0 for k_ in _TRADE_KEYS}
+    mcts_fallbacks = mcts_decisions = 0
 
     t0 = time.perf_counter()
     for g in range(args.games):
         game_seed = args.seed + g
-        ab_color = COLORS[g % 4] if rotate else Color.RED
-        ab_seat_games[ab_color] += 1
-        players = build_players(ab_color, policy, enable_trades,
-                                args.ab_depth, args.ab_prune, game_seed)
+        if rotate:
+            ab_colors = {COLORS[(g + j) % 4] for j in range(k)}
+        else:
+            ab_colors = set(COLORS[:k])
+        for c in ab_colors:
+            ab_seat_games[c] += 1
+        players, game_mcts = build_players(ab_colors, args, policy,
+                                           mcts_net, game_seed)
         game = Game(players, seed=game_seed)
         winner = game.play()
 
-        for k, v in tally_trades(game, ab_color).items():
-            trade_tot[k] += v
+        for key, v in tally_trades(game, ab_colors).items():
+            trade_tot[key] += v
+        for mp in game_mcts:
+            mcts_fallbacks += mp.fallbacks
+            mcts_decisions += mp.decisions
 
         if winner is None:
             no_winner += 1
         else:
             wins[winner] += 1
-            if winner == ab_color:
+            if winner in ab_colors:
                 ab_wins += 1
-                ab_seat_wins[ab_color] += 1
+                ab_seat_wins[winner] += 1
             else:
-                ppo_wins += 1
+                agent_wins += 1
 
         if (g + 1) % args.progress_every == 0:
             dec = (g + 1) - no_winner
             ab_rate = ab_wins / dec if dec else 0.0
             el = time.perf_counter() - t0
             print(f"[{g+1}/{args.games}] AB {ab_wins} wins "
-                  f"({ab_rate:.3f} of {dec} decided), PPO {ppo_wins}  "
-                  f"{el / (g + 1):.2f}s/game")
+                  f"({ab_rate:.3f} of {dec} decided, fair {ab_fair}), "
+                  f"agents {agent_wins}  "
+                  f"{el / (g + 1):.2f}s/game", flush=True)
 
     elapsed = time.perf_counter() - t0
     decided = args.games - no_winner
 
     ab_lo, ab_hi = wilson_ci(ab_wins, decided)
     ab_rate = ab_wins / decided if decided else 0.0
-    ppo_lo, ppo_hi = wilson_ci(ppo_wins, decided)
-    ppo_rate = ppo_wins / decided if decided else 0.0
-    # Per-PPO-seat share = PPO collective / 3 (3 symmetric trained seats).
-    ppo_per_agent = ppo_rate / 3.0
+    ag_lo, ag_hi = wilson_ci(agent_wins, decided)
+    ag_rate = agent_wins / decided if decided else 0.0
+    # Per-trained-seat share = collective / N (N symmetric trained seats).
+    per_agent = ag_rate / n
 
     result = {
-        "experiment": "3xPPO_vs_1xAlphaBeta",
+        "experiment": f"{n}x{args.policy.upper()}_vs_{k}xAlphaBeta",
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "ckpt": str(ckpt),
-        "algo": args.algo,
+        "policy": args.policy,
+        "algo": args.algo if args.policy == "ppo" else None,
+        "n_agents": n,
+        "n_ab": k,
+        "mcts_sims": args.mcts_sims if args.policy == "mcts" else None,
+        "leaf_eval": args.leaf_eval if args.policy == "mcts" else None,
+        "ab_value_scale": (args.ab_value_scale
+                           if args.policy == "mcts" else None),
+        "model_ab_depth": (args.model_ab_depth
+                           if args.policy == "mcts" else None),
+        "model_ab_prune": (args.model_ab_prune
+                           if args.policy == "mcts" else None),
+        "model_catanatron_chance": (args.model_catanatron_chance
+                                    if args.policy == "mcts" else None),
+        "model_opp": args.model_opp if args.policy == "mcts" else None,
+        "trade_add_cap": (args.trade_add_cap
+                          if args.policy == "mcts" else None),
+        "mcts_fallbacks": mcts_fallbacks if args.policy == "mcts" else None,
+        "mcts_decisions": mcts_decisions if args.policy == "mcts" else None,
         "deterministic": args.deterministic,
         "enable_trades": enable_trades,
+        "max_offers_per_turn": args.max_offers_per_turn,
         "rotate_ab_seat": rotate,
         "ab_depth": args.ab_depth,
         "ab_prune": args.ab_prune,
@@ -279,17 +400,18 @@ def main() -> None:
         "ab_wins": ab_wins,
         "ab_win_rate": ab_rate,
         "ab_ci95": [ab_lo, ab_hi],
-        "ppo_wins": ppo_wins,
-        "ppo_win_rate": ppo_rate,
-        "ppo_ci95": [ppo_lo, ppo_hi],
-        "ppo_per_agent_rate": ppo_per_agent,
-        "fair_share": FAIR_SHARE,
+        "ab_fair_share": ab_fair,
+        "agent_wins": agent_wins,
+        "agent_win_rate": ag_rate,
+        "agent_ci95": [ag_lo, ag_hi],
+        "agent_per_seat_rate": per_agent,
+        "per_seat_fair_share": FAIR_SHARE,
         "seat_wins": {c.name: wins[c] for c in COLORS},
         "ab_seat_wins": {c.name: ab_seat_wins[c] for c in COLORS},
         "ab_seat_games": {c.name: ab_seat_games[c] for c in COLORS},
         "trades_total": trade_tot,
-        "trades_per_game": {k: trade_tot[k] / args.games if args.games else 0.0
-                            for k in _TRADE_KEYS},
+        "trades_per_game": {k_: trade_tot[k_] / args.games if args.games
+                            else 0.0 for k_ in _TRADE_KEYS},
         "elapsed_s": elapsed,
         "s_per_game": elapsed / args.games if args.games else 0.0,
     }
@@ -297,47 +419,52 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"mixed_3ppo_1ab_{stamp}.json"
+    out_path = out_dir / f"mixed_{n}{args.policy}_{k}ab_{stamp}.json"
     out_path.write_text(json.dumps(result, indent=2))
 
-    print(f"\n=== mixed table: 3x PPO (trades={'on' if enable_trades else 'off'}) "
-          f"vs 1x AlphaBeta(d{args.ab_depth}"
+    print(f"\n=== mixed table: {n}x {args.policy.upper()} "
+          f"(trades={'on' if enable_trades else 'off'}) "
+          f"vs {k}x AlphaBeta(d{args.ab_depth}"
           f"{',prune' if args.ab_prune else ''}) ===")
-    print(f"ckpt:           {ckpt}")
-    print(f"games:          {decided}/{args.games} decided (no-winner: {no_winner})")
-    print(f"AlphaBeta:      {ab_wins} wins   rate {ab_rate:.4f}  "
-          f"95% CI [{ab_lo:.4f}, {ab_hi:.4f}]   (fair share = {FAIR_SHARE})")
-    print(f"PPO (all 3):    {ppo_wins} wins   rate {ppo_rate:.4f}  "
-          f"95% CI [{ppo_lo:.4f}, {ppo_hi:.4f}]")
-    print(f"PPO per agent:  {ppo_per_agent:.4f}   (vs fair {FAIR_SHARE})")
-    print(f"seat wins:      {result['seat_wins']}")
+    print(f"ckpt:            {ckpt}")
+    print(f"games:           {decided}/{args.games} decided "
+          f"(no-winner: {no_winner})")
+    print(f"AlphaBeta block: {ab_wins} wins   rate {ab_rate:.4f}  "
+          f"95% CI [{ab_lo:.4f}, {ab_hi:.4f}]   (fair share = {ab_fair})")
+    print(f"agents (all {n}):  {agent_wins} wins   rate {ag_rate:.4f}  "
+          f"95% CI [{ag_lo:.4f}, {ag_hi:.4f}]")
+    print(f"agent per seat:  {per_agent:.4f}   (vs fair {FAIR_SHARE})")
+    print(f"seat wins:       {result['seat_wins']}")
     if rotate:
-        print(f"AB by seat:     "
+        print("AB by seat:      "
               + ", ".join(f"{c.name}:{ab_seat_wins[c]}/{ab_seat_games[c]}"
                           for c in COLORS))
+    if args.policy == "mcts" and mcts_decisions:
+        print(f"mcts fallbacks:  {mcts_fallbacks}/{mcts_decisions} "
+              f"({mcts_fallbacks / mcts_decisions:.4%})")
     g = args.games or 1
     confirms = trade_tot["confirms"]
     offers = trade_tot["offers"]
     acc_rate = confirms / offers if offers else 0.0
     print(f"--- trades (domestic p2p) ---")
-    print(f"offers:         {offers}  ({offers / g:.2f}/game)")
-    print(f"confirmed p2p:  {confirms}  ({confirms / g:.2f}/game)  "
+    print(f"offers:          {offers}  ({offers / g:.2f}/game)")
+    print(f"confirmed p2p:   {confirms}  ({confirms / g:.2f}/game)  "
           f"accept rate {acc_rate:.1%}")
-    print(f"rejects:        {trade_tot['rejects']}   "
+    print(f"rejects:         {trade_tot['rejects']}   "
           f"AB-accepts: {trade_tot['ab_accepts']}   "
           f"cancels: {trade_tot['cancels']}")
-    mar_ppo = trade_tot["maritime"] - trade_tot["maritime_ab"]
-    print(f"maritime(bank): {trade_tot['maritime']} total  "
-          f"PPO {mar_ppo} ({mar_ppo / g:.2f}/game over 3 seats = "
-          f"{mar_ppo / g / 3:.2f}/agent)  AB {trade_tot['maritime_ab']} "
+    mar_agents = trade_tot["maritime"] - trade_tot["maritime_ab"]
+    print(f"maritime(bank):  {trade_tot['maritime']} total  "
+          f"agents {mar_agents} ({mar_agents / g:.2f}/game over {n} seats = "
+          f"{mar_agents / g / n:.2f}/agent)  AB {trade_tot['maritime_ab']} "
           f"({trade_tot['maritime_ab'] / g:.2f}/game)")
-    verdict = ("AlphaBeta ABOVE fair share — still strong outnumbered"
-               if ab_lo > FAIR_SHARE else
-               "AlphaBeta BELOW fair share — trained table suppresses it"
-               if ab_hi < FAIR_SHARE else
-               "AlphaBeta ~ fair share (CI straddles 0.25)")
-    print(f"verdict:        {verdict}")
-    print(f"time:           {elapsed:.1f}s  ({result['s_per_game']:.2f}s/game)")
+    verdict = (f"AlphaBeta ABOVE fair share ({ab_fair}) — still strong "
+               f"outnumbered" if ab_lo > ab_fair else
+               f"AlphaBeta BELOW fair share ({ab_fair}) — trained table "
+               f"suppresses it" if ab_hi < ab_fair else
+               f"AlphaBeta ~ fair share (CI straddles {ab_fair})")
+    print(f"verdict:         {verdict}")
+    print(f"time:            {elapsed:.1f}s  ({result['s_per_game']:.2f}s/game)")
     print(f"saved -> {out_path}")
 
 

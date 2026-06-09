@@ -128,24 +128,29 @@ against your own logs before claiming.
 
 ## Slide 8 — Replacing the Catanatron heuristic (the de-catanatronization)
 
-- **Why:** the 32.5% agent still **calls Catanatron at inference** (heuristic leaf value +
-  a copy of Alpha-Beta as its in-tree opponent model). To claim *a learned agent* beat
-  Alpha-Beta, the agent must be **self-contained** — Catanatron only for training data +
-  the final exam.
-- **Three stages (now complete):**
-  - **Stage 1 — learn the leaf value** (distill the heuristic into the value head):
-    **20.0% [15.1–26.1].** Fidelity-to-heuristic ↔ win rate is ~linear, then plateaus.
-  - **Stage 2 — learn the in-tree opponent** (drop the Alpha-Beta copy) → **fully
-    self-contained: 18.0% [13.3–23.9].**
-  - **Stage 3 — train the value on stronger-play / search-improved targets: 17.5%
-    [12.9–23.4] — NULL.** The target was fit well (value-MSE 0.014, teacher top-1 0.90) but
-    **win rate did not move.**
-- **Finding (the result of this half):** the self-contained learned agent **saturates at
-  ~17%** — below parity (25%) and below the hybrid (29.5%). The cap is now pinned to an
-  **information limit**: the per-player observation **cannot see hidden enemy state**
-  (unrevealed dev cards / hands) that the Alpha-Beta heuristic reads, so a
-  **partial-information learner cannot match a full-information judge.** Confirmed
-  irreducible — unchanged by more data, more sims, and better targets (all three tested).
+- **Why:** the 32.5% agent still **calls Catanatron at inference** — the heuristic leaf
+  value + a copy of Alpha-Beta as its in-tree opponent model. To claim *a learned agent*
+  beat Alpha-Beta, the agent must be **self-contained** — Catanatron only for training data
+  + the final exam.
+- **Three stages, each measured vs AB-d2 (512 sims, 200g):**
+  - **Stage 1 — learned leaf value** (drop the heuristic at the leaves): best **20.0%
+    [15.1–26.1]**, from a value head trained on **game outcomes**. Notably, directly
+    *distilling the heuristic* did **worse — 16.5%** → the first sign of the cap: a
+    partial-information net can't faithfully copy a full-information judge.
+  - **Stage 2 — learned in-tree opponent** (drop the Alpha-Beta copy) → **fully
+    self-contained: 18.0% [13.3–23.9].** 4× more imitation data did **not** help (16.5%).
+  - **Stage 3 — learned value on stronger, search-improved targets: 17.5% [12.9–23.4] —
+    NULL, and the decisive control:** the head **fit the target nearly perfectly**
+    (value-MSE 0.014, top-1 0.90 on the strong moves) yet **win rate did not move.**
+- **Finding:** the fully self-contained learned agent **saturates at ~17%** — ~8 pts under
+  parity (25%), ~12 under the hybrid (29.5%). **Every lever falsified:** prior (more
+  data/capacity raise imitation accuracy but not wins), sims (learned leaves don't scale —
+  *bit-identical* at 1024 vs 512), value target (stage 3 NULL).
+- **Mechanism — an information cap, not compute or targets.** The heuristic's value is a
+  **max over the opponents' values**, which reads **hidden enemy state** (unplayed dev
+  cards, concealed hands). The per-player observation **cannot encode it** → two positions
+  identical in the obs but differing in hidden state get the same learned value, however
+  good the target. **A partial-information learner cannot match a full-information judge.**
 - **One-line takeaway:** *the heuristic's edge is information, not just computation — the
   hybrid keeps it (32.5%), the perspective-pure learned agent is information-bounded (~17%).*
 
@@ -160,10 +165,11 @@ at 25% "parity":
 
 **Chart B — De-catanatronization ledger (slide 8).** Descending bars + 25% parity line:
 - Hybrid (uses Catanatron): 29.5%
-- + learned leaf value: 20.0%
-- + learned opponent (self-contained): 18.0%
-- + stronger-play value targets: 17.5%
-- Annotate the 29.5→17 drop as "cost of removing the heuristic = information cap".
+- Stage 1 — learned leaf value: 20.0%
+- Stage 1+2 — + learned opponent (self-contained): 18.0%
+- Stage 1+2+3 — + stronger-play value targets: 17.5%
+- Annotate: 4× data = 16.5% (no help); shade a "~17% self-contained ceiling" band; label the
+  29.5→17 drop "cost of removing the heuristic = information cap".
 
 ---
 
@@ -175,10 +181,17 @@ at 25% "parity":
 - **Hybrid native ladders:** AB-d1 29.0% [25.5–32.8] (≥512 sims, 600g); AB-d2 29.5%
   [23.6–36.2] (512 sims).
 - **Sims scaling (hybrid vs AB-d1):** 256→23.0%, 512→28.25%, 1024→30.5%.
-- **De-cat stages vs AB-d2 (512 sims, 200g):** stage1 20.0% [15.1–26.1] · stage2 (self-
-  contained) 18.0% [13.3–23.9] · stage3 17.5% [12.9–23.4] · hybrid ref 29.5% · parity 25%.
-- **Stage-1 fidelity↔wins:** symbolic ρ1.00→29.5% · two-scale ρ0.83→16.5% · naive ρ0.71→
-  9.5% · outcome-head ρ0.44→20.0%.
+- **De-cat ladder vs AB-d2 (512 sims, 200g, seed 12345):** hybrid ref (symbolic leaf +
+  symbolic AB opp) 29.5% [23.6–36.2] · stage1 learned leaf (outcome head) + symbolic AB opp
+  20.0% [15.1–26.1] · stage1+2 self-contained 160k clone 18.0% [13.3–23.9] · stage1+2
+  self-contained 640k/4× data 16.5% [12.0–22.3] · stage1+2+3 search-value leaf 17.5%
+  [12.9–23.4] · parity 25%.
+- **Stage 3 control (proves info-cap):** target value-MSE 0.0136, top-1 0.904 on the strong
+  moves — near-perfect target fit, wins still ~17% (clean NULL).
+- **Stage-1 leaf families (fidelity ρ to heuristic ↔ wins):** symbolic ρ1.00→29.5% ·
+  two-scale ab_value distill ρ0.83→16.5% · naive scalar distill ρ0.71→9.5% · outcome head
+  (the winner) ρ0.44→20.0%. Lesson: mimicking the heuristic loses to predicting outcomes —
+  because the heuristic can't be mimicked from POV obs (the info cap).
 - **Reactive vs random:** PPO 95.5% native / 89.5% bridge; self-play 86.7%; arch-sweep up to
   98.5% — all with **0 vs Alpha-Beta**.
 - **Distribution beats optimization:** Alpha-Beta-clone = 0.975 vs random after ~42s data +

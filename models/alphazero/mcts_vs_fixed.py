@@ -47,6 +47,10 @@ class MCTSvsFixed:
         dirichlet_frac: float = 0.25,
         seed: int = 0,
         suppress_p2p: bool = True,
+        learner_trades: bool = False,
+        trade_prior_frac: float = 0.05,
+        trade_add_cap: int = 3,
+        trade_step_cost: float = 0.01,
         value_mode: str = "vp_margin",
         ab_depth: int = 1,
         ab_prune: bool = False,
@@ -65,6 +69,38 @@ class MCTSvsFixed:
         self.rng = random.Random(seed)
         self._np_rng = np.random.default_rng(seed ^ 0x71FED)
         self._p2p = p2p_trade_mask() if suppress_p2p else None
+        # Learner-side P2P trading. When True, the p2p filter is NOT applied
+        # at the LEARNER's own decision nodes (root included): the tree may
+        # compose offers natively (ADD_GIVE/ADD_WANT -> OPEN -> responders ->
+        # CONFIRM). The filter still applies to in-tree OPPONENT picks, so
+        # the modeled opponents never *offer* — mirroring the real table,
+        # where AlphaBeta cannot propose a trade. Opponent trade RESPONSES
+        # survive the filter via never-strand (a responder's whole legal set
+        # is trade ids), and ab_decide values ACCEPT vs DECLINE through its
+        # own never-strand — exactly the 1-ply value response the trade-aware
+        # table AB plays.
+        self.learner_trades = learner_trades
+        self.trade_prior_frac = trade_prior_frac
+        self.trade_add_cap = trade_add_cap
+        self.trade_step_cost = trade_step_cost
+        self._trade_bool = p2p_trade_mask()
+        _a = fastcatan.action
+        self._add_give = list(range(_a.TRADE_ADD_GIVE_BASE,
+                                    _a.TRADE_ADD_GIVE_BASE + 5))
+        self._add_want = list(range(_a.TRADE_ADD_WANT_BASE,
+                                    _a.TRADE_ADD_WANT_BASE + 5))
+        # Compose-churn ids (ADD/OPEN/CANCEL): a step on these keeps the
+        # clock on the learner with the board unchanged, so churn arms
+        # inherit the pre-reply root value while real moves' Q carries the
+        # opponents' replies — visits would sink into null negotiation.
+        # _simulate charges trade_step_cost per churn step, REFUNDED when
+        # the path contains a CONFIRM (completed trade): failed/aimless
+        # negotiation pays, profitable trades are judged on board value.
+        self._churn_bool = np.zeros_like(self._trade_bool)
+        self._churn_bool[self._add_give + self._add_want
+                         + [_a.TRADE_OPEN, _a.TRADE_CANCEL]] = True
+        self._confirm_lo = _a.TRADE_CONFIRM_BASE
+        self._confirm_hi = _a.TRADE_CONFIRM_BASE + 4
         self.value_mode = value_mode
         self.leaf_eval = leaf_eval
         self.ab_value_scale = ab_value_scale
@@ -95,7 +131,21 @@ class MCTSvsFixed:
     def _net_opp(self, game_env, cp: int, legal) -> int:
         """In-tree opponent pick: the net's argmax over the seat's legal set
         (cp's POV obs — the clone trained on all four seats). Deterministic,
-        mirroring AlphaBeta's determinism; always lands in ``legal``."""
+        mirroring AlphaBeta's determinism; always lands in ``legal``.
+
+        All-trade prompts (responder ACCEPT/DECLINE; proposer CONFIRM/CANCEL
+        when the learner is the responder to a table offer) are OOD for the
+        clone — AB games contain no p2p trades, so its logits carry no signal
+        on those ids. They are answered by the VALUE head instead: 1-ply
+        probe of each response (step, evaluate cp's POV, restore), argmax —
+        the learned analogue of ab_decide's leaf-value response and of the
+        table TradeAwareAlphaBeta._decide_trade. Ties (ACCEPT vs DECLINE
+        before any swap executes) break on the lowest action id, the same
+        class of tie behaviour as the native responders."""
+        if len(legal) == 1:
+            return int(legal[0])
+        if all(self._trade_bool[a] for a in legal):
+            return self._value_response(game_env, cp, legal)
         game_env.write_obs(cp, self._opp_obs)
         obs = torch.from_numpy(self._opp_obs).unsqueeze(0).to(self.device)
         logits, _v = self.net(obs)
@@ -103,14 +153,56 @@ class MCTSvsFixed:
         best = max(legal, key=lambda a: row[a])
         return int(best)
 
+    @torch.no_grad()
+    def _value_response(self, game_env, cp: int, legal) -> int:
+        """Value-head argmax over an all-trade prompt (one batched forward).
+        A CONFIRM probe executes the swap, so the proposer side genuinely
+        prices the trade; ACCEPT/DECLINE probes tie pre-swap and fall to the
+        lowest id, with the real pricing done at the learner's CONFIRM node."""
+        snap = game_env.snapshot()
+        rows = np.empty((len(legal), OBS_SIZE), dtype=np.float32)
+        for i, a in enumerate(legal):
+            game_env.step(a)
+            game_env.write_obs(cp, rows[i])
+            game_env.load_snapshot(snap)
+        _logits, v = self.net(torch.from_numpy(rows).to(self.device))
+        return int(legal[int(np.argmax(v.float().cpu().numpy()))])
+
     # -------- env reads --------
 
-    def _legal(self):
+    def _legal(self, for_learner: bool = False):
         self.env.action_mask(self._mask_buf)
         mask, legal = _unpack(self._mask_buf)
-        if self._p2p is not None:
+        if self._p2p is not None and not (for_learner and self.learner_trades):
             mask, legal = filter_p2p(mask, self._p2p)
+        elif for_learner and self.learner_trades and self.trade_add_cap > 0:
+            mask, legal = self._cap_compose(mask, legal)
         return mask, legal
+
+    def _cap_compose(self, mask, legal):
+        """Bound the in-tree offer size: once a side of the in-flight offer
+        holds `trade_add_cap` cards, that side's ADD ids are filtered.
+
+        Why: an ADD step keeps the clock on the learner — no opponent has
+        replied yet — so an uncapped ADD-churn arm inherits the pre-reply
+        root value while every real move's Q already carries the opponents'
+        replies. Visits sink into compose churn. Short arms force the
+        subtree to the OPEN -> responder frontier within the sim budget,
+        where trade arms get valued by actual responses."""
+        e = self.env
+        drop = []
+        if sum(e.trade_give(r) for r in range(5)) >= self.trade_add_cap:
+            drop += self._add_give
+        if sum(e.trade_want(r) for r in range(5)) >= self.trade_add_cap:
+            drop += self._add_want
+        if not drop:
+            return mask, legal
+        m2 = mask.copy()
+        m2[drop] = False
+        l2 = [a for a in legal if m2[a]]
+        if not l2:                     # never strand a decision node
+            return mask, legal
+        return m2, l2
 
     def _signature(self) -> tuple:
         e = self.env
@@ -137,10 +229,10 @@ class MCTSvsFixed:
         Returns (done, mask, legal). Reseeds before each step to resample chance.
         """
         while True:
-            mask, legal = self._legal()
+            cp = self.env.current_player
+            mask, legal = self._legal(for_learner=(cp == self.learner))
             if not legal:
                 return True, mask, legal
-            cp = self.env.current_player
             if cp == self.learner and len(legal) > 1:
                 return False, mask, legal
             action = (legal[0] if cp == self.learner
@@ -173,6 +265,17 @@ class MCTSvsFixed:
         p[~node.mask] = 0.0
         s = p.sum()
         node.P = (p / s).astype(np.float32) if s > 0 else node.mask.astype(np.float32)
+        if self.learner_trades and self.trade_prior_frac > 0.0:
+            # The IL prior is trade-blind (AB games contain no p2p trades →
+            # ~zero softmax mass on compose ids), so PUCT would never explore
+            # them. Floor: blend `trade_prior_frac` uniform mass over the
+            # LEGAL trade ids whenever a non-trade alternative also exists
+            # (pure-trade prompts like ACCEPT/DECLINE already carry all mass).
+            tl = node.mask & self._trade_bool
+            if tl.any() and bool((node.mask & ~self._trade_bool).any()):
+                f = self.trade_prior_frac
+                node.P *= np.float32(1.0 - f)
+                node.P[tl] += np.float32(f / tl.sum())
         node.expanded = True
         if self.leaf_eval == "ab_value":
             # Catanatron's value is LEXICOGRAPHIC: public VPs at 3e14 dwarf
@@ -240,6 +343,17 @@ class MCTSvsFixed:
                 break
             node = child
 
+        if self.learner_trades and self.trade_step_cost > 0:
+            n_churn = 0
+            confirmed = False
+            for _nd, a in path:
+                if self._churn_bool[a]:
+                    n_churn += 1
+                elif self._confirm_lo <= a < self._confirm_hi:
+                    confirmed = True
+            if n_churn and not confirmed:
+                value -= self.trade_step_cost * n_churn
+
         for nd, a in path:
             nd.N[a] += 1
             nd.W[a] += value
@@ -250,7 +364,7 @@ class MCTSvsFixed:
     def choose(self, root_snapshot: bytes, temperature: float = 1.0,
                add_root_noise: bool = True):
         self.env.load_snapshot(root_snapshot)
-        mask, legal = self._legal()
+        mask, legal = self._legal(for_learner=True)
         root = Node(root_snapshot, self.learner, mask, legal)
         self._expand(root)
         if add_root_noise:
