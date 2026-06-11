@@ -6,6 +6,8 @@
 #SBATCH --mem=48G
 #SBATCH --time=48:00:00               # TODO [verify]: partition walltime limit
 #SBATCH --output=slurm-selfplay-%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL    # email on start / finish / crash
+#SBATCH --mail-user=bove@campus.tu-berlin.de
 #
 # AlphaZero SELF-PLAY training (GPU-batched, models/alphazero/batched_selfplay).
 # The az-scratch-vpm arm: pure self-play, dense vp_margin values, NO AlphaBeta
