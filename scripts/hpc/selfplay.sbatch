@@ -24,19 +24,41 @@
 #       scripts/hpc/selfplay.sbatch
 set -euo pipefail
 
-REPO=${REPO:-$HOME/fastCatan}
-VENV=${VENV:-}
-CONDA_SH=${CONDA_SH:-$HOME/miniforge3/etc/profile.d/conda.sh}
-if [[ -n "$VENV" ]]; then
+# Repo: default to the directory you ran `sbatch` from (works no matter where the
+# repo lives), NOT a hardcoded $HOME/fastCatan. Override with REPO=... if needed.
+REPO=${REPO:-${SLURM_SUBMIT_DIR:-$PWD}}
+cd "$REPO" || { echo "[FATAL] cannot cd to REPO=$REPO"; exit 1; }
+echo "[env] host=$(hostname) REPO=$REPO"
+
+# Env activation, in order of preference: explicit VENV -> explicit CONDA_SH ->
+# auto-find a conda in the usual spots -> `conda` already on PATH. Fail loudly.
+if [[ -n "${VENV:-}" ]]; then
   source "$VENV/bin/activate"
 else
-  source "$CONDA_SH"
-  conda activate catan
+  CONDA_SH=${CONDA_SH:-}
+  if [[ -z "$CONDA_SH" ]]; then
+    for c in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" /opt/conda; do
+      [[ -f "$c/etc/profile.d/conda.sh" ]] && CONDA_SH="$c/etc/profile.d/conda.sh" && break
+    done
+  fi
+  if [[ -n "$CONDA_SH" && -f "$CONDA_SH" ]]; then
+    source "$CONDA_SH"
+  elif command -v conda >/dev/null 2>&1; then
+    eval "$(conda shell.bash hook)"
+  else
+    echo "[FATAL] no conda found — pass CONDA_SH=/path/to/etc/profile.d/conda.sh or VENV=/path/to/venv"; exit 1
+  fi
+  conda activate "${CONDA_ENV:-catan}"
 fi
-cd "$REPO"
 
 export PYTHONHASHSEED=0
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Fail fast with a clear message if the native build / torch is not importable on
+# THIS compute node (e.g. an -march=native .so built on a different-CPU login node).
+echo "[env] python=$(command -v python) ($(python --version 2>&1))"
+python -c "import fastcatan, torch; print('[env] fastcatan', fastcatan.OBS_SIZE, fastcatan.NUM_ACTIONS, '| cuda', torch.cuda.is_available())" \
+  || { echo '[FATAL] fastcatan/torch import failed on this node — rebuild on a compute node (scripts/hpc/README.md §2, -march=native caveat)'; exit 1; }
 
 GAMES=${GAMES:-60000}                  # games THIS job plays (chain jobs to add more)
 NUM_GAMES=${NUM_GAMES:-256}            # concurrent games per lockstep batch
