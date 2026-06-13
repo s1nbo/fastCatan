@@ -162,6 +162,8 @@ def build_players(ab_colors, args, policy, mcts_net, game_seed: int,
                 opp_model=args.model_opp,
                 enable_trades=enable_trades,
                 trade_add_cap=args.trade_add_cap,
+                trade_prior_frac=args.trade_prior_frac,
+                trade_step_cost=args.trade_step_cost,
                 seed=game_seed * 4 + i,
                 judge=judge_net)
             mcts_policies.append(game_policy)
@@ -257,6 +259,15 @@ def main() -> None:
                         "de-cat; with --leaf-eval net the seats are FULLY "
                         "SELF-CONTAINED — no ab_value/ab_decide at "
                         "inference).")
+    p.add_argument("--trade-prior-frac", type=float, default=0.05,
+                   help="uniform prior mass floored onto LEGAL trade ids at "
+                        "learner nodes (the IL prior is trade-blind). Lower "
+                        "= less search attention on offers — rational "
+                        "restraint vs never-accepting tables.")
+    p.add_argument("--trade-step-cost", type=float, default=0.01,
+                   help="per-churn-step value penalty for compose actions, "
+                        "refunded on CONFIRM. Higher = futile negotiation "
+                        "priced as the tempo loss it is.")
     p.add_argument("--trade-add-cap", type=int, default=3,
                    help="max cards per side of an in-tree composed offer "
                         "(bounds compose-churn arms; mcts only)")
@@ -397,6 +408,10 @@ def main() -> None:
         "judge_ckpt": (args.judge_ckpt or None) if args.policy == "mcts" else None,
         "trade_add_cap": (args.trade_add_cap
                           if args.policy == "mcts" else None),
+        "trade_prior_frac": (args.trade_prior_frac
+                             if args.policy == "mcts" else None),
+        "trade_step_cost": (args.trade_step_cost
+                            if args.policy == "mcts" else None),
         "mcts_fallbacks": mcts_fallbacks if args.policy == "mcts" else None,
         "mcts_decisions": mcts_decisions if args.policy == "mcts" else None,
         "deterministic": args.deterministic,

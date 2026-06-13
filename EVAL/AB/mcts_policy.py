@@ -57,6 +57,7 @@ class MctsStatePolicy:
         enable_trades: bool = False,
         trade_prior_frac: float = 0.05,
         trade_add_cap: int = 3,
+        trade_step_cost: float = 0.01,
         judge: torch.nn.Module | None = None,
     ):
         self.bridge = None              # wired after bridge construction
@@ -72,7 +73,7 @@ class MctsStatePolicy:
             net, device=device, sims=sims, c_puct=c_puct,
             dirichlet_frac=0.0, seed=seed, suppress_p2p=True,
             learner_trades=enable_trades, trade_prior_frac=trade_prior_frac,
-            trade_add_cap=trade_add_cap,
+            trade_add_cap=trade_add_cap, trade_step_cost=trade_step_cost,
             ab_depth=model_ab_depth, ab_prune=model_ab_prune,
             catanatron_chance=model_catanatron_chance,
             leaf_eval=leaf_eval, opp_model=opp_model,
